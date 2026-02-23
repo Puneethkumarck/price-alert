@@ -1,0 +1,25 @@
+server:
+  port: 8081
+
+ingestor:
+  simulator-url: ws://localhost:8085/v1/feed
+  subscribe-symbols:
+    - "*"
+  reconnect:
+    initial-delay-ms: 1000
+    max-delay-ms: 30000
+    multiplier: 2
+
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: "1"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

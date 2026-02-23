@@ -1,0 +1,19 @@
+server:
+  port: 8085
+
+simulator:
+  mode: RANDOM_WALK
+  tick-interval-ms: 100
+  symbols-file: classpath:symbols/us-equities.csv
+  volatility: 0.001
+  market-hours:
+    open: "09:30"
+    close: "16:00"
+    timezone: "America/New_York"
+    respect-hours: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

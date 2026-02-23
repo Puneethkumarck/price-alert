@@ -1,0 +1,29 @@
+server:
+  port: 8083
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/price_alerts
+    username: alerts
+    password: alerts_local
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: notification-persister-group
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.pricealert.common.*
+        partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

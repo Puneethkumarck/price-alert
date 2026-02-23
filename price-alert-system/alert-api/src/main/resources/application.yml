@@ -1,0 +1,35 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/price_alerts
+    username: alerts
+    password: alerts_local
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+alert:
+  daily-reset:
+    cron: "0 30 9 * * MON-FRI"
+    timezone: America/New_York
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

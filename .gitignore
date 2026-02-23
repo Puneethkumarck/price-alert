@@ -1,0 +1,27 @@
+# OS files
+.DS_Store
+
+# Design & planning docs
+ARCHITECTURE_PRICE_ALERT.md
+CLAUDE.md
+DESIGN_DOC.md
+IMPLEMENTATION_PLAN.md
+IMPLEMENTATION_STATE.json
+IMPLEMENTATION_STATE.md
+playbook/
+tasks/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# Gradle
+.gradle/
+**/build/
+
+# Misc
+*.log
