@@ -34,7 +34,7 @@ spring:
         linger.ms: 20
         buffer.memory: 67108864
         max.block.ms: 5000
-        delivery.timeout.ms: 30000
+        delivery.timeout.ms: 60000
 
 namastack:
   outbox:
