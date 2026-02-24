@@ -1,0 +1,469 @@
+{
+  "info": {
+    "name": "Price Alert System",
+    "description": "REST API for managing price alerts and retrieving notifications.\n\nSet the `token` collection variable before sending requests.\nGenerate one with the Pre-request Script in the \"Generate JWT Token\" request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "token", "value": "" },
+    { "key": "alertId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Generate JWT Token",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const secret = 'price-alert-dev-secret-key-change-in-production';",
+                  "const header = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/=/g,'').replace(/\\+/g,'-').replace(/\\//g,'_');",
+                  "const payload = btoa(JSON.stringify({sub:'user_001',iat:1700000000,exp:9999999999})).replace(/=/g,'').replace(/\\+/g,'-').replace(/\\//g,'_');",
+                  "",
+                  "const CryptoJS = require('crypto-js');",
+                  "const signature = CryptoJS.HmacSHA256(header + '.' + payload, secret);",
+                  "const sig = CryptoJS.enc.Base64.stringify(signature).replace(/=/g,'').replace(/\\+/g,'-').replace(/\\//g,'_');",
+                  "",
+                  "const token = header + '.' + payload + '.' + sig;",
+                  "pm.collectionVariables.set('token', token);",
+                  "console.log('JWT Token generated and saved to collection variable');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Health check returns UP', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/actuator/health",
+            "header": [],
+            "description": "Generates a JWT token via Pre-request Script and saves it to the `token` collection variable. Also verifies the API is healthy.\n\n**Run this first** before any other request."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "item": [
+        {
+          "name": "Create Alert — AAPL ABOVE $150",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Alert created with status 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Status is ACTIVE', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('ACTIVE');",
+                  "});",
+                  "",
+                  "pm.test('Symbol is AAPL', function () {",
+                  "    pm.expect(pm.response.json().symbol).to.eql('AAPL');",
+                  "});",
+                  "",
+                  "// Save alertId for subsequent requests",
+                  "const alertId = pm.response.json().id;",
+                  "pm.collectionVariables.set('alertId', alertId);",
+                  "console.log('Saved alertId: ' + alertId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/alerts",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"AAPL\",\n  \"thresholdPrice\": 150.00,\n  \"direction\": \"ABOVE\",\n  \"note\": \"Notify when AAPL goes above $150\"\n}"
+            },
+            "description": "Creates a new price alert. Saves the returned `alertId` to the collection variable for use in subsequent requests.\n\n**Direction options:** `ABOVE`, `BELOW`, `CROSS`"
+          }
+        },
+        {
+          "name": "Create Alert — TSLA BELOW $200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Alert created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().direction).to.eql('BELOW');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/alerts",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"TSLA\",\n  \"thresholdPrice\": 200.00,\n  \"direction\": \"BELOW\",\n  \"note\": \"Notify when TSLA drops below $200\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Alert — MSFT CROSS $400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Alert created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().direction).to.eql('CROSS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/alerts",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"MSFT\",\n  \"thresholdPrice\": 400.00,\n  \"direction\": \"CROSS\",\n  \"note\": \"Notify when MSFT crosses $400 in either direction\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List All Alerts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 200 with paginated content', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().content).to.be.an('array');",
+                  "    pm.expect(pm.response.json().totalElements).to.be.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/alerts?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "alerts"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "Returns paginated list of alerts for the authenticated user."
+          }
+        },
+        {
+          "name": "List Alerts — Filter by Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/alerts?status=ACTIVE",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "alerts"],
+              "query": [
+                { "key": "status", "value": "ACTIVE", "description": "ACTIVE, TRIGGERED_TODAY, or DELETED" }
+              ]
+            },
+            "description": "Filter alerts by status. Options: `ACTIVE`, `TRIGGERED_TODAY`, `DELETED`."
+          }
+        },
+        {
+          "name": "List Alerts — Filter by Symbol",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/alerts?symbol=AAPL",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "alerts"],
+              "query": [
+                { "key": "symbol", "value": "AAPL" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Alert by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns alert details', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('alertId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/alerts/{{alertId}}",
+            "description": "Gets a single alert by ID. Uses the `alertId` saved from the Create request."
+          }
+        },
+        {
+          "name": "Update Alert — Change Threshold",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Alert updated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().thresholdPrice).to.eql(175.0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/alerts/{{alertId}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"thresholdPrice\": 175.00\n}"
+            },
+            "description": "Partial update — only the fields you send are changed. Omitted fields keep their current values.\n\nUpdatable fields: `thresholdPrice`, `direction`, `note`."
+          }
+        },
+        {
+          "name": "Update Alert — Change Direction & Note",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/alerts/{{alertId}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direction\": \"BELOW\",\n  \"note\": \"Changed to below alert\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Alert (soft-delete)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 204 No Content', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/alerts/{{alertId}}",
+            "description": "Soft-deletes the alert (sets status to DELETED). The alert still exists in the database but is no longer evaluated."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List Notifications",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns paginated notifications', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().content).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "notifications"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "Returns triggered alert notifications sorted by `createdAt DESC`.\n\nEach notification contains:\n- `symbol`, `thresholdPrice`, `triggerPrice` (actual price that triggered)\n- `direction` (ABOVE/BELOW/CROSS)\n- `createdAt`, `read` status"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API is healthy', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/actuator/health",
+            "description": "No authentication required. Returns service health status."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validation Errors",
+      "item": [
+        {
+          "name": "Create Alert — Missing Symbol",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 400 validation error', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().code).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/alerts",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"thresholdPrice\": 150.00,\n  \"direction\": \"ABOVE\"\n}"
+            },
+            "description": "Demonstrates validation error response (RFC 7807 Problem Detail)."
+          }
+        },
+        {
+          "name": "Create Alert — Invalid Symbol Format",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 400 for lowercase symbol', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/alerts",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"aapl\",\n  \"thresholdPrice\": 150.00,\n  \"direction\": \"ABOVE\"\n}"
+            },
+            "description": "Symbol must be 1-5 uppercase letters."
+          }
+        },
+        {
+          "name": "Create Alert — No Auth Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 403 Forbidden', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/alerts",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"AAPL\",\n  \"thresholdPrice\": 150.00,\n  \"direction\": \"ABOVE\"\n}"
+            },
+            "description": "Demonstrates 403 response when no JWT token is provided."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -27,11 +27,17 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
       acks: "1"
+      batch-size: 32768
+      properties:
+        linger.ms: 20
+        buffer.memory: 67108864
+        max.block.ms: 5000
+        delivery.timeout.ms: 30000
 
 namastack:
   outbox:
-    poll-interval: 500
-    batch-size: 100
+    poll-interval: 200
+    batch-size: 500
     jdbc:
       table-prefix: "ingestor_"
       schema-initialization:

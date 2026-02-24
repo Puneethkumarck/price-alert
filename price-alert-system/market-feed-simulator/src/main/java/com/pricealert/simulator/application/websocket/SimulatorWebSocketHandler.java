@@ -64,26 +64,32 @@ public class SimulatorWebSocketHandler extends TextWebSocketHandler {
     }
 
     public void broadcast(String symbol, String tickJson) {
+        var msg = new TextMessage(tickJson);
         for (var sub : subscriptions) {
             if (sub.isSubscribedTo(symbol) && sub.session().isOpen()) {
-                try {
-                    sub.session().sendMessage(new TextMessage(tickJson));
-                } catch (IOException e) {
-                    log.warn("Failed to send tick to client {}: {}", sub.session().getId(), e.getMessage());
-                }
+                sendSynchronized(sub.session(), msg);
             }
         }
     }
 
     public void broadcastHeartbeat(String heartbeatJson) {
+        var msg = new TextMessage(heartbeatJson);
         for (var sub : subscriptions) {
             if (sub.session().isOpen()) {
-                try {
-                    sub.session().sendMessage(new TextMessage(heartbeatJson));
-                } catch (IOException e) {
-                    log.warn("Failed to send heartbeat to client {}: {}", sub.session().getId(), e.getMessage());
+                sendSynchronized(sub.session(), msg);
+            }
+        }
+    }
+
+    private void sendSynchronized(WebSocketSession session, TextMessage message) {
+        try {
+            synchronized (session) {
+                if (session.isOpen()) {
+                    session.sendMessage(message);
                 }
             }
+        } catch (IOException e) {
+            log.warn("Failed to send to client {}: {}", session.getId(), e.getMessage());
         }
     }
 

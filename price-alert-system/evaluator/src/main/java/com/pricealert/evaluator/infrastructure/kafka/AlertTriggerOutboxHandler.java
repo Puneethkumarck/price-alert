@@ -8,6 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.TimeUnit;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -17,15 +19,13 @@ public class AlertTriggerOutboxHandler {
 
     @io.namastack.outbox.annotation.OutboxHandler
     public void handle(AlertTrigger trigger, OutboxRecordMetadata metadata) {
-        kafkaTemplate.send(KafkaTopics.ALERT_TRIGGERS, metadata.getKey(), trigger)
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish AlertTrigger for alert {}: {}",
-                                trigger.alertId(), ex.getMessage());
-                        throw new RuntimeException("Kafka send failed for alert " + trigger.alertId(), ex);
-                    }
-                    log.debug("Published AlertTrigger for alert {} via outbox to partition {}",
-                            trigger.alertId(), result.getRecordMetadata().partition());
-                });
+        try {
+            kafkaTemplate.send(KafkaTopics.ALERT_TRIGGERS, metadata.getKey(), trigger)
+                    .get(10, TimeUnit.SECONDS);
+            log.debug("Published AlertTrigger for alert {} via outbox", trigger.alertId());
+        } catch (Exception e) {
+            log.error("Failed to publish AlertTrigger for alert {}: {}", trigger.alertId(), e.getMessage());
+            throw new RuntimeException("Kafka send failed for alert " + trigger.alertId(), e);
+        }
     }
 }
