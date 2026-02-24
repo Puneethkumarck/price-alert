@@ -47,5 +47,7 @@ public abstract class BaseIntegrationTest {
         registry.add("alert.daily-reset.cron", () -> "-");
         registry.add("namastack.outbox.poll-interval", () -> "500");
         registry.add("namastack.outbox.batch-size", () -> "50");
+        registry.add("namastack.outbox.jdbc.table-prefix", () -> "alertapi_");
+        registry.add("namastack.outbox.jdbc.schema-initialization.enabled", () -> "false");
     }
 }

@@ -35,8 +35,9 @@ namastack:
     poll-interval: 1000
     batch-size: 50
     jdbc:
-      schema:
-        auto-create: false
+      table-prefix: "evaluator_"
+      schema-initialization:
+        enabled: false
     retry:
       policy: exponential
       max-retries: 3

@@ -33,8 +33,9 @@ namastack:
     poll-interval: 500
     batch-size: 100
     jdbc:
-      schema:
-        auto-create: false
+      table-prefix: "ingestor_"
+      schema-initialization:
+        enabled: false
     retry:
       policy: exponential
       max-retries: 3

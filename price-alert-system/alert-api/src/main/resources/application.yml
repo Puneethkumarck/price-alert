@@ -36,8 +36,9 @@ namastack:
     poll-interval: 2000
     batch-size: 20
     jdbc:
-      schema:
-        auto-create: false
+      table-prefix: "alertapi_"
+      schema-initialization:
+        enabled: false
     retry:
       policy: exponential
       max-retries: 5
