@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'alert-api'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['alert-api:8080']
+
+  - job_name: 'evaluator'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['evaluator:8082']
+
+  - job_name: 'notification-persister'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['notification-persister:8083']
+
+  - job_name: 'tick-ingestor'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['tick-ingestor:8081']
+
+  - job_name: 'market-feed-simulator'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['market-feed-simulator:8085']

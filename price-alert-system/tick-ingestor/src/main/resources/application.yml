@@ -11,6 +11,8 @@ ingestor:
     multiplier: 2
 
 spring:
+  application:
+    name: tick-ingestor
   datasource:
     url: jdbc:postgresql://localhost:5432/price_alerts
     username: alerts
@@ -54,4 +56,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://tempo:4318/v1/traces

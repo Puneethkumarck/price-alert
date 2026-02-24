@@ -12,8 +12,21 @@ simulator:
     timezone: "America/New_York"
     respect-hours: false
 
+spring:
+  application:
+    name: market-feed-simulator
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://tempo:4318/v1/traces

@@ -104,8 +104,8 @@ wait_healthy() {
     fi
   done
 
-  # Non-healthcheck services (evaluator, notification-persister) — just check running
-  for svc in "evaluator" "notification-persister"; do
+  # Non-healthcheck services — just check running
+  for svc in "evaluator" "notification-persister" "prometheus" "grafana" "loki" "promtail" "tempo"; do
     local container="price-alert-system-${svc}-1"
     local status
     status=$(docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null || echo "missing")
@@ -133,6 +133,10 @@ show_endpoints() {
   echo -e "  ${CYAN}PostgreSQL:${NC}       localhost:5432 (alerts/alerts_local)"
   echo -e "  ${CYAN}Kafka:${NC}            localhost:9092"
   echo -e "  ${CYAN}Redis:${NC}            localhost:6379"
+  echo -e "  ${CYAN}Grafana:${NC}          http://localhost:3000  (admin/admin)"
+  echo -e "  ${CYAN}Prometheus:${NC}       http://localhost:9090"
+  echo -e "  ${CYAN}Loki:${NC}             http://localhost:3100"
+  echo -e "  ${CYAN}Tempo:${NC}            http://localhost:3200"
   echo -e "  ${CYAN}Data Flow Viz:${NC}    file://${PROJECT_DIR}/docs/dataflow.html"
 }
 

@@ -1,0 +1,245 @@
+{
+  "uid": "price-alert-service-logs",
+  "title": "Price Alert – Service Logs",
+  "description": "Centralized log viewer with error filtering per service",
+  "tags": ["price-alert", "logs", "errors"],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": "Loki",
+        "query": "label_values(service)",
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "level",
+        "type": "custom",
+        "current": { "text": "ERROR", "value": "ERROR" },
+        "options": [
+          { "text": "All", "value": "", "selected": false },
+          { "text": "ERROR", "value": "ERROR", "selected": true },
+          { "text": "WARN", "value": "WARN", "selected": false },
+          { "text": "INFO", "value": "INFO", "selected": false },
+          { "text": "DEBUG", "value": "DEBUG", "selected": false }
+        ],
+        "includeAll": false,
+        "multi": false,
+        "query": "ERROR,WARN,INFO,DEBUG"
+      },
+      {
+        "name": "search",
+        "type": "textbox",
+        "current": { "text": "", "value": "" },
+        "label": "Search text"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Error Rate by Service",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 0 },
+      "datasource": "Loki",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 20, "lineWidth": 2, "drawStyle": "bars", "stacking": { "mode": "normal" } },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] } },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (service) (count_over_time({service=~\"$service\"} |~ \"ERROR\" [$__interval]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Error + Warn Count by Service (Last 5m)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 7 },
+      "datasource": "Loki",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "options": { "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["sum"] } },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (service) (count_over_time({service=~\"$service\"} |~ \"ERROR|WARN\" [5m]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Log Volume by Level",
+      "type": "timeseries",
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 7 },
+      "datasource": "Loki",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 30, "drawStyle": "bars", "stacking": { "mode": "normal" } }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "ERROR" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "WARN" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "INFO" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (level) (count_over_time({service=~\"$service\"} | json | level =~ \"ERROR|WARN|INFO\" [$__interval]))",
+          "legendFormat": "{{level}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "title": "alert-api Logs",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 13 },
+      "datasource": "Loki",
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{service=\"alert-api\"} |~ \"$level\" |~ \"$search\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "evaluator Logs",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 23 },
+      "datasource": "Loki",
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{service=\"evaluator\"} |~ \"$level\" |~ \"$search\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "tick-ingestor Logs",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 33 },
+      "datasource": "Loki",
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{service=\"tick-ingestor\"} |~ \"$level\" |~ \"$search\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "notification-persister Logs",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 43 },
+      "datasource": "Loki",
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{service=\"notification-persister\"} |~ \"$level\" |~ \"$search\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "market-feed-simulator Logs",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 53 },
+      "datasource": "Loki",
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{service=\"market-feed-simulator\"} |~ \"$level\" |~ \"$search\"",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39
+}

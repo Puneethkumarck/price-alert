@@ -7,4 +7,4 @@ COPY ${JAR_FILE} /app/app.jar
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "--enable-preview", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "--enable-preview", "-Dspring.profiles.active=docker", "-jar", "/app/app.jar"]

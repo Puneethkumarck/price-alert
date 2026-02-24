@@ -28,6 +28,9 @@ subprojects {
         "testCompileOnly"("org.projectlombok:lombok:1.18.38")
         "testAnnotationProcessor"("org.projectlombok:lombok:1.18.38")
         "testImplementation"(platform("org.testcontainers:testcontainers-bom:1.21.3"))
+        "implementation"("io.micrometer:micrometer-registry-prometheus")
+        "implementation"("io.micrometer:micrometer-tracing-bridge-otel")
+        "implementation"("io.opentelemetry:opentelemetry-exporter-otlp")
     }
 
     tasks.withType<JavaCompile> {

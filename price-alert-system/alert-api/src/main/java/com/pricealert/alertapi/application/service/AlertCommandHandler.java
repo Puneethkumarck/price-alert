@@ -4,6 +4,7 @@ import com.pricealert.alertapi.domain.alert.Alert;
 import com.pricealert.alertapi.domain.alert.AlertService;
 import com.pricealert.common.event.AlertStatus;
 import com.pricealert.common.event.Direction;
+import io.micrometer.core.instrument.Counter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,10 +18,15 @@ import java.math.BigDecimal;
 public class AlertCommandHandler {
 
     private final AlertService alertService;
+    private final Counter alertsCreatedCounter;
+    private final Counter alertsUpdatedCounter;
+    private final Counter alertsDeletedCounter;
 
     @Transactional
     public Alert createAlert(String userId, String symbol, BigDecimal thresholdPrice, Direction direction, String note) {
-        return alertService.createAlert(userId, symbol, thresholdPrice, direction, note);
+        var alert = alertService.createAlert(userId, symbol, thresholdPrice, direction, note);
+        alertsCreatedCounter.increment();
+        return alert;
     }
 
     @Transactional(readOnly = true)
@@ -35,11 +41,14 @@ public class AlertCommandHandler {
 
     @Transactional
     public Alert updateAlert(String alertId, String userId, BigDecimal thresholdPrice, Direction direction, String note) {
-        return alertService.updateAlert(alertId, userId, thresholdPrice, direction, note);
+        var alert = alertService.updateAlert(alertId, userId, thresholdPrice, direction, note);
+        alertsUpdatedCounter.increment();
+        return alert;
     }
 
     @Transactional
     public void deleteAlert(String alertId, String userId) {
         alertService.deleteAlert(alertId, userId);
+        alertsDeletedCounter.increment();
     }
 }
