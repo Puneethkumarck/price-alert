@@ -3,317 +3,397 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Price Alert System — Data Flow Visualization</title>
+<title>Price Alert System — Data Flow</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0d1117; color: #c9d1d9; overflow-x: hidden; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',system-ui,sans-serif;background:#090b10;color:#c9d1d9;overflow-x:hidden;min-height:100vh}
+  body::before{content:'';position:fixed;inset:0;background-image:
+    radial-gradient(circle at 25% 25%,rgba(88,166,255,0.03) 0%,transparent 50%),
+    radial-gradient(circle at 75% 75%,rgba(210,168,255,0.03) 0%,transparent 50%);
+    pointer-events:none;z-index:0}
 
-  header { text-align: center; padding: 24px 16px 8px; }
-  header h1 { font-size: 22px; font-weight: 600; color: #e6edf3; }
-  header p { font-size: 13px; color: #7d8590; margin-top: 4px; }
+  header{text-align:center;padding:28px 16px 6px;position:relative;z-index:1}
+  header h1{font-size:24px;font-weight:700;background:linear-gradient(135deg,#58a6ff,#d2a8ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  header p{font-size:13px;color:#7d8590;margin-top:6px}
 
-  .controls { display: flex; justify-content: center; gap: 10px; padding: 12px 16px 20px; flex-wrap: wrap; }
-  .controls button {
-    padding: 8px 18px; border: 1px solid #30363d; border-radius: 6px;
-    background: #161b22; color: #c9d1d9; font-size: 13px; cursor: pointer;
-    transition: all .15s;
+  .controls{display:flex;justify-content:center;gap:8px;padding:14px 16px 18px;flex-wrap:wrap;position:relative;z-index:1}
+  .controls button{
+    padding:7px 16px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;
+    background:rgba(255,255,255,0.04);color:#c9d1d9;font-size:12px;font-weight:500;cursor:pointer;
+    transition:all .2s;font-family:'Inter',sans-serif;
   }
-  .controls button:hover { background: #1f2937; border-color: #58a6ff; }
-  .controls button.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-  .controls .speed { font-size: 12px; color: #7d8590; display: flex; align-items: center; gap: 6px; }
-  .controls .speed input { width: 80px; accent-color: #1f6feb; }
+  .controls button:hover{background:rgba(88,166,255,0.12);border-color:rgba(88,166,255,0.3)}
+  .controls button.active{background:linear-gradient(135deg,#1f6feb,#6e40c9);border-color:transparent;color:#fff;box-shadow:0 4px 16px rgba(31,111,235,0.3)}
+  .speed-wrap{font-size:11px;color:#7d8590;display:flex;align-items:center;gap:6px;padding:0 8px}
+  .speed-wrap input{width:80px;accent-color:#58a6ff}
 
-  .canvas-wrap { position: relative; width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 16px; }
-  canvas { display: block; width: 100%; height: auto; border-radius: 8px; }
+  .canvas-wrap{position:relative;width:100%;max-width:1140px;margin:0 auto;padding:0 16px;z-index:1}
+  canvas{display:block;width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.04);background:#0a0d12}
 
-  .legend { display: flex; justify-content: center; gap: 20px; padding: 16px; flex-wrap: wrap; }
-  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7d8590; }
-  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .prog-bar{max-width:1140px;margin:0 auto;padding:8px 16px;position:relative;z-index:1}
+  .prog-track{height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+  .prog-fill{height:100%;background:linear-gradient(90deg,#58a6ff,#d2a8ff);border-radius:2px;transition:width .3s;width:0%}
 
-  .step-info {
-    max-width: 700px; margin: 0 auto; padding: 16px 20px; min-height: 80px;
-    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-    text-align: center; transition: opacity .2s;
+  .legend{display:flex;justify-content:center;gap:24px;padding:12px 16px;flex-wrap:wrap;position:relative;z-index:1}
+  .legend-item{display:flex;align-items:center;gap:7px;font-size:11px;color:#7d8590;font-weight:500}
+  .legend-dot{width:8px;height:8px;border-radius:3px;display:inline-block}
+
+  #info{
+    max-width:740px;margin:8px auto 0;padding:18px 24px;min-height:88px;
+    background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;
+    text-align:center;position:relative;z-index:1;
   }
-  .step-info h3 { font-size: 15px; color: #58a6ff; margin-bottom: 6px; }
-  .step-info p { font-size: 13px; color: #8b949e; line-height: 1.5; }
-  .step-info code { background: #1f2937; padding: 2px 6px; border-radius: 3px; font-size: 12px; color: #7ee787; }
+  #info h3{font-size:14px;color:#58a6ff;margin-bottom:8px;font-weight:600}
+  #info p{font-size:12.5px;color:#8b949e;line-height:1.6}
+  #info code{font-family:'JetBrains Mono',monospace;background:rgba(126,231,135,0.1);padding:2px 7px;border-radius:4px;font-size:11px;color:#7ee787;border:1px solid rgba(126,231,135,0.15)}
 
-  footer { text-align: center; padding: 20px; font-size: 11px; color: #484f58; }
+  footer{text-align:center;padding:24px;font-size:10px;color:#383d47;position:relative;z-index:1}
 </style>
 </head>
 <body>
-
 <header>
-  <h1>Price Alert System — Happy Path Data Flow</h1>
-  <p>Interactive visualization of the transactional outbox pattern across all services</p>
+  <h1>Price Alert System</h1>
+  <p>Happy Path Data Flow — Transactional Outbox Pattern</p>
 </header>
-
 <div class="controls">
-  <button id="btn-play" class="active">&#9654; Play</button>
-  <button id="btn-pause">&#10074;&#10074; Pause</button>
-  <button id="btn-reset">&#8634; Reset</button>
-  <button id="btn-step">Step &rarr;</button>
-  <div class="speed">
-    <span>Speed:</span>
-    <input id="speed" type="range" min="0.5" max="3" step="0.25" value="1">
-    <span id="speed-val">1x</span>
-  </div>
+  <button id="btnPlay" class="active">&#9654; Play</button>
+  <button id="btnPause">&#10074;&#10074; Pause</button>
+  <button id="btnReset">&#8634; Reset</button>
+  <button id="btnPrev">&larr; Prev</button>
+  <button id="btnNext">Next &rarr;</button>
+  <div class="speed-wrap"><span>Speed</span><input id="speedSlider" type="range" min="0.3" max="3" step="0.1" value="1"><span id="speedVal">1.0x</span></div>
 </div>
-
-<div class="canvas-wrap">
-  <canvas id="c" width="1100" height="620"></canvas>
-</div>
-
+<div class="canvas-wrap"><canvas id="c"></canvas></div>
+<div class="prog-bar"><div class="prog-track"><div class="prog-fill" id="progFill"></div></div></div>
 <div class="legend">
-  <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div>Service</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div>Kafka Topic</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#7ee787"></div>PostgreSQL Table</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#d2a8ff"></div>Outbox Table</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#ff7b72"></div>Active Message</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#58a6ff"></span>Service</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#f0883e"></span>Kafka Topic</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#7ee787"></span>PostgreSQL</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#d2a8ff"></span>Outbox</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#ff7b72"></span>Active Flow</div>
 </div>
-
-<div class="step-info" id="info">
-  <h3>Ready</h3>
-  <p>Press <strong>Play</strong> to watch the happy path: user creates an alert, market tick triggers it, notification is persisted.</p>
-</div>
-
-<footer>Price Alert System &mdash; Hexagonal Architecture with Transactional Outbox (namastack-outbox)</footer>
+<div id="info"><h3>Ready</h3><p>Press <b>Play</b> or <b>Space</b> to start. Use arrow keys to step through.</p></div>
+<footer>Java 25 &bull; Spring Boot 4.0 &bull; Kafka &bull; PostgreSQL &bull; namastack-outbox</footer>
 
 <script>
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-const info = document.getElementById('info');
-const DPR = window.devicePixelRatio || 1;
-let W, H;
+"use strict";
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const W = 1140, H = 640;
 
-function resize() {
-  const rect = canvas.getBoundingClientRect();
-  W = 1100; H = 620;
-  canvas.width = W * DPR; canvas.height = H * DPR;
-  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+// HiDPI
+const DPR = window.devicePixelRatio || 1;
+canvas.width = W * DPR;
+canvas.height = H * DPR;
+canvas.style.width = W + "px";
+canvas.style.height = H + "px";
+ctx.scale(DPR, DPR);
+
+// Polyfill roundRect
+function rr(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
 }
-resize();
-window.addEventListener('resize', resize);
+
+function alphaHex(a) {
+  return Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0");
+}
 
 // ── Nodes ──
-const nodes = {
-  user:       { x: 60,  y: 100, w: 90,  h: 40, label: 'User',                color: '#8b949e', type: 'actor' },
-  alertApi:   { x: 220, y: 80,  w: 120, h: 50, label: 'alert-api',           color: '#58a6ff', type: 'service' },
-  alertsDb:   { x: 220, y: 190, w: 120, h: 36, label: 'alerts',              color: '#7ee787', type: 'db' },
-  outboxApi:  { x: 220, y: 250, w: 120, h: 36, label: 'alertapi_outbox',     color: '#d2a8ff', type: 'outbox' },
-  kAlertChg:  { x: 440, y: 80,  w: 130, h: 36, label: 'alert-changes',       color: '#f0883e', type: 'kafka' },
-  simulator:  { x: 60,  y: 400, w: 120, h: 40, label: 'market-simulator',    color: '#58a6ff', type: 'service' },
-  ingestor:   { x: 220, y: 400, w: 120, h: 50, label: 'tick-ingestor',       color: '#58a6ff', type: 'service' },
-  outboxIng:  { x: 220, y: 480, w: 120, h: 36, label: 'ingestor_outbox',     color: '#d2a8ff', type: 'outbox' },
-  kTicks:     { x: 440, y: 400, w: 130, h: 36, label: 'market-ticks',        color: '#f0883e', type: 'kafka' },
-  evaluator:  { x: 660, y: 240, w: 120, h: 50, label: 'evaluator',           color: '#58a6ff', type: 'service' },
-  evalIndex:  { x: 660, y: 160, w: 120, h: 36, label: 'in-memory index',     color: '#3fb950', type: 'mem' },
-  outboxEval: { x: 660, y: 340, w: 120, h: 36, label: 'evaluator_outbox',    color: '#d2a8ff', type: 'outbox' },
-  kTriggers:  { x: 860, y: 240, w: 130, h: 36, label: 'alert-triggers',      color: '#f0883e', type: 'kafka' },
-  notifier:   { x: 860, y: 380, w: 130, h: 50, label: 'notification-persister', color: '#58a6ff', type: 'service' },
-  notifDb:    { x: 860, y: 480, w: 130, h: 36, label: 'notifications',       color: '#7ee787', type: 'db' },
-  trigLogDb:  { x: 860, y: 540, w: 130, h: 36, label: 'alert_trigger_log',   color: '#7ee787', type: 'db' },
-  apiNotif:   { x: 980, y: 100, w: 90,  h: 40, label: 'GET /notifications',  color: '#8b949e', type: 'actor' },
+const N = {
+  user:       {x:50, y:105,w:100,h:46,label:"User",            color:"#8b949e",icon:"\u{1F464}",kind:"actor"},
+  alertApi:   {x:220,y:85, w:135,h:55,label:"alert-api",       color:"#58a6ff",icon:"\u{1F6E1}\uFE0F",kind:"svc"},
+  alertsDb:   {x:220,y:195,w:135,h:40,label:"alerts",          color:"#7ee787",icon:"\u{1F5C3}\uFE0F",kind:"db"},
+  outboxApi:  {x:220,y:262,w:135,h:40,label:"alertapi_outbox", color:"#d2a8ff",icon:"\u{1F4E4}",kind:"outbox"},
+  kAlertChg:  {x:440,y:85, w:140,h:40,label:"alert-changes",   color:"#f0883e",icon:"\u{1F4E8}",kind:"kafka"},
+  simulator:  {x:50, y:410,w:120,h:46,label:"simulator",       color:"#58a6ff",icon:"\u{1F4C8}",kind:"svc"},
+  ingestor:   {x:220,y:400,w:135,h:55,label:"tick-ingestor",   color:"#58a6ff",icon:"\u{1F50C}",kind:"svc"},
+  outboxIng:  {x:220,y:490,w:135,h:40,label:"ingestor_outbox", color:"#d2a8ff",icon:"\u{1F4E4}",kind:"outbox"},
+  kTicks:     {x:440,y:410,w:140,h:40,label:"market-ticks",    color:"#f0883e",icon:"\u{1F4E8}",kind:"kafka"},
+  evaluator:  {x:660,y:248,w:135,h:55,label:"evaluator",       color:"#58a6ff",icon:"\u{1F9EE}",kind:"svc"},
+  evalIndex:  {x:660,y:165,w:135,h:40,label:"in-memory index", color:"#3fb950",icon:"\u{26A1}",kind:"mem"},
+  outboxEval: {x:660,y:348,w:135,h:40,label:"evaluator_outbox",color:"#d2a8ff",icon:"\u{1F4E4}",kind:"outbox"},
+  kTriggers:  {x:870,y:248,w:140,h:40,label:"alert-triggers",  color:"#f0883e",icon:"\u{1F4E8}",kind:"kafka"},
+  notifier:   {x:870,y:390,w:145,h:55,label:"notif-persister", color:"#58a6ff",icon:"\u{1F514}",kind:"svc"},
+  notifDb:    {x:870,y:490,w:145,h:40,label:"notifications",   color:"#7ee787",icon:"\u{1F5C3}\uFE0F",kind:"db"},
+  trigLogDb:  {x:870,y:558,w:145,h:40,label:"trigger_log",     color:"#7ee787",icon:"\u{1F5C3}\uFE0F",kind:"db"},
+  apiNotif:   {x:990,y:105,w:105,h:46,label:"GET /notif",      color:"#8b949e",icon:"\u{1F464}",kind:"actor"},
 };
 
 // ── Steps ──
-const steps = [
-  { from: 'user', to: 'alertApi', label: 'POST /alerts', desc: 'User creates alert', detail: 'User sends <code>POST /api/v1/alerts</code> with <code>{"symbol":"AAPL","thresholdPrice":150,"direction":"ABOVE"}</code>. JWT token authenticates the request.' },
-  { from: 'alertApi', to: 'alertsDb', label: 'INSERT alert', desc: 'Alert persisted to DB', detail: 'AlertCommandHandler wraps in <code>@Transactional</code>. AlertService generates ULID, saves to <code>alerts</code> table with status <code>ACTIVE</code>.' },
-  { from: 'alertApi', to: 'outboxApi', label: 'outbox.schedule()', desc: 'CREATED event written to outbox', detail: 'Within the SAME transaction, <code>AlertChangePublisher.publish()</code> calls <code>outbox.schedule(alertChange, "AAPL")</code>. Written to <code>alertapi_outbox_record</code>. DB commit = both alert + outbox record are atomic.' },
-  { from: 'outboxApi', to: 'kAlertChg', label: 'poller → Kafka', desc: 'Outbox poller publishes to Kafka', detail: 'Namastack outbox poller picks up the record. <code>AlertChangeOutboxHandler.handle()</code> sends to <code>alert-changes</code> topic keyed by symbol. Record marked COMPLETED.' },
-  { from: 'kAlertChg', to: 'evaluator', label: 'consume CREATED', desc: 'Evaluator receives alert change', detail: '<code>AlertChangeConsumer.onAlertChange()</code> receives the CREATED event. Routes to <code>handleCreated()</code> which builds an <code>AlertEntry</code>.' },
-  { from: 'evaluator', to: 'evalIndex', label: 'addAlert()', desc: 'Alert indexed in memory', detail: '<code>AlertIndexManager.getOrCreate("AAPL")</code> returns a <code>SymbolAlertIndex</code>. The alert (ABOVE $150) is added to the TreeMap. Ready for evaluation.' },
-  { from: 'simulator', to: 'ingestor', label: 'WebSocket tick', desc: 'Simulator sends market tick', detail: 'Market feed simulator generates a random-walk tick: <code>{"symbol":"AAPL","price":184.48,...}</code>. Sent via WebSocket to tick-ingestor.' },
-  { from: 'ingestor', to: 'outboxIng', label: 'outbox.schedule()', desc: 'Tick written to ingestor outbox', detail: '<code>TickKafkaProducer.send()</code> parses JSON, validates type=TICK, calls <code>outbox.schedule(tick, "AAPL")</code>. Written to <code>ingestor_outbox_record</code> within a <code>@Transactional</code> boundary.' },
-  { from: 'outboxIng', to: 'kTicks', label: 'poller → Kafka', desc: 'Tick published to Kafka', detail: 'Ingestor outbox poller (500ms interval, batch 100) picks up tick. <code>TickOutboxHandler.handle()</code> sends to <code>market-ticks</code> topic keyed by symbol.' },
-  { from: 'kTicks', to: 'evaluator', label: 'consume tick', desc: 'Evaluator receives market tick', detail: '<code>MarketTickConsumer.onMarketTick()</code> receives AAPL tick at $184.48. Calls <code>evaluationEngine.evaluate("AAPL", 184.48, ...)</code>.' },
-  { from: 'evaluator', to: 'evalIndex', label: 'evaluate()', desc: 'Alert fires! Price above threshold', detail: '<code>SymbolAlertIndex.evaluate(184.48)</code>: ABOVE alerts with threshold &le; 184.48 fire. Our $150 alert fires. Returns <code>AlertTrigger</code> with triggerPrice=$184.48.' },
-  { from: 'evaluator', to: 'outboxEval', label: 'outbox.schedule()', desc: 'Trigger event written to outbox', detail: '<code>AlertTriggerProducer.send()</code> calls <code>outbox.schedule(trigger, userId)</code>. Written to <code>evaluator_outbox_record</code>. <code>AlertStatusUpdater.markTriggeredToday()</code> updates alert status to TRIGGERED_TODAY.' },
-  { from: 'outboxEval', to: 'kTriggers', label: 'poller → Kafka', desc: 'Trigger published to Kafka', detail: 'Evaluator outbox poller picks up trigger. <code>AlertTriggerOutboxHandler.handle()</code> sends to <code>alert-triggers</code> topic keyed by userId. Record marked COMPLETED.' },
-  { from: 'kTriggers', to: 'notifier', label: 'consume trigger', desc: 'Notification persister receives trigger', detail: '<code>AlertTriggerConsumer.onAlertTrigger()</code> receives the AlertTrigger event. Delegates to <code>NotificationPersistenceService.persist()</code>.' },
-  { from: 'notifier', to: 'notifDb', label: 'INSERT idempotent', desc: 'Notification persisted (Layer 3 dedup)', detail: '<code>NotificationPort.insertIdempotent()</code> → <code>INSERT...ON CONFLICT (idempotency_key) DO NOTHING</code>. Key = <code>alertId:tradingDate</code>. First write wins.' },
-  { from: 'notifier', to: 'trigLogDb', label: 'INSERT idempotent', desc: 'Trigger log persisted (Layer 4 dedup)', detail: '<code>AlertTriggerLogPort.insertIdempotent()</code> → <code>INSERT...ON CONFLICT (alert_id, trading_date) DO NOTHING</code>. Audit trail preserved.' },
-  { from: 'apiNotif', to: 'notifDb', label: 'GET /notifications', desc: 'User retrieves notification', detail: 'User calls <code>GET /api/v1/notifications</code>. Returns paginated list sorted by <code>createdAt DESC</code>. Shows AAPL triggered at $184.48 above $150 threshold.' },
+const S = [
+  {f:"user",t:"alertApi",lbl:"POST /alerts",desc:"User creates alert",det:'User sends <code>POST /api/v1/alerts</code> with <code>{"symbol":"AAPL","thresholdPrice":150,"direction":"ABOVE"}</code>.',ph:"create"},
+  {f:"alertApi",t:"alertsDb",lbl:"INSERT alert",desc:"Alert persisted to DB",det:"<code>AlertCommandHandler</code> wraps in <code>@Transactional</code>. Saves to <code>alerts</code> table with status <code>ACTIVE</code>.",ph:"create"},
+  {f:"alertApi",t:"outboxApi",lbl:"outbox.schedule()",desc:"CREATED event to outbox (same TX)",det:"Same transaction: <code>outbox.schedule(alertChange, \"AAPL\")</code> writes to <code>alertapi_outbox_record</code>. Atomic with the alert INSERT.",ph:"create"},
+  {f:"outboxApi",t:"kAlertChg",lbl:"poller \u2192 Kafka",desc:"Outbox poller publishes to Kafka",det:"Poller picks up record. <code>AlertChangeOutboxHandler</code> sends to <code>alert-changes</code> topic. Record marked <code>COMPLETED</code>.",ph:"publish"},
+  {f:"kAlertChg",t:"evaluator",lbl:"consume CREATED",desc:"Evaluator receives alert change",det:"<code>AlertChangeConsumer</code> receives CREATED event, routes to <code>handleCreated()</code>.",ph:"index"},
+  {f:"evaluator",t:"evalIndex",lbl:"addAlert()",desc:"Alert indexed in memory",det:"<code>SymbolAlertIndex</code> adds the ABOVE $150 alert to the TreeMap. Ready for evaluation.",ph:"index"},
+  {f:"simulator",t:"ingestor",lbl:"WebSocket tick",desc:"Simulator sends market tick",det:'Random-walk tick: <code>{"symbol":"AAPL","price":184.48}</code> via WebSocket.',ph:"tick"},
+  {f:"ingestor",t:"outboxIng",lbl:"outbox.schedule()",desc:"Tick to ingestor outbox",det:"<code>TickKafkaProducer</code> calls <code>outbox.schedule(tick, \"AAPL\")</code> in <code>@Transactional</code>.",ph:"tick"},
+  {f:"outboxIng",t:"kTicks",lbl:"poller \u2192 Kafka",desc:"Tick published via outbox",det:"Ingestor poller (500ms, batch 100) publishes to <code>market-ticks</code> topic.",ph:"publish"},
+  {f:"kTicks",t:"evaluator",lbl:"consume tick",desc:"Evaluator receives market tick",det:"<code>MarketTickConsumer</code> receives AAPL at $184.48. Calls <code>evaluate()</code>.",ph:"eval"},
+  {f:"evaluator",t:"evalIndex",lbl:"evaluate()",desc:"Alert fires! Price > threshold",det:"<code>SymbolAlertIndex.evaluate(184.48)</code>: ABOVE $150 fires! Returns <code>AlertTrigger</code>.",ph:"eval"},
+  {f:"evaluator",t:"outboxEval",lbl:"outbox.schedule()",desc:"Trigger to evaluator outbox",det:"<code>outbox.schedule(trigger, userId)</code>. Also marks alert <code>TRIGGERED_TODAY</code>.",ph:"eval"},
+  {f:"outboxEval",t:"kTriggers",lbl:"poller \u2192 Kafka",desc:"Trigger published to Kafka",det:"<code>AlertTriggerOutboxHandler</code> sends to <code>alert-triggers</code>. COMPLETED.",ph:"publish"},
+  {f:"kTriggers",t:"notifier",lbl:"consume trigger",desc:"Notification persister receives",det:"<code>AlertTriggerConsumer</code> delegates to <code>NotificationPersistenceService.persist()</code>.",ph:"notify"},
+  {f:"notifier",t:"notifDb",lbl:"INSERT idempotent",desc:"Notification persisted (L3 dedup)",det:"<code>ON CONFLICT (idempotency_key) DO NOTHING</code>. Key = <code>alertId:tradingDate</code>.",ph:"notify"},
+  {f:"notifier",t:"trigLogDb",lbl:"INSERT idempotent",desc:"Trigger log persisted (L4 dedup)",det:"<code>ON CONFLICT (alert_id, trading_date) DO NOTHING</code>. Audit trail.",ph:"notify"},
+  {f:"apiNotif",t:"notifDb",lbl:"GET /notifications",desc:"User retrieves notification",det:"Paginated response: AAPL triggered at $184.48 above $150 threshold.",ph:"read"},
 ];
 
-// ── Drawing helpers ──
-function roundRect(x, y, w, h, r, fill, stroke) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
-  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke(); }
-}
+const PC = {create:"#58a6ff",publish:"#d2a8ff",index:"#3fb950",tick:"#f0883e",eval:"#ff7b72",notify:"#ffa657",read:"#79c0ff"};
 
-function drawNode(n, highlight) {
-  const glow = highlight ? 0.3 : 0;
-  if (glow) {
-    ctx.shadowColor = '#ff7b72'; ctx.shadowBlur = 16;
+// ── Particles ──
+let parts = [];
+function spawnP(x, y, col) {
+  for (let i = 0; i < 8; i++) {
+    parts.push({x,y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,life:1,decay:0.02+Math.random()*0.02,r:1.5+Math.random()*2.5,col});
   }
-  const bg = highlight ? '#1a2332' : '#0d1117';
-  const border = highlight ? '#ff7b72' : n.color + '66';
-  roundRect(n.x, n.y, n.w, n.h, 6, bg, border);
-  ctx.shadowBlur = 0;
-
-  ctx.fillStyle = highlight ? '#e6edf3' : n.color;
-  ctx.font = n.type === 'service' ? 'bold 12px system-ui' : '11px system-ui';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  const icon = n.type === 'kafka' ? '  ' : n.type === 'db' ? '  ' : n.type === 'outbox' ? '  ' : n.type === 'mem' ? '  ' : '';
-  ctx.fillText(icon + n.label, n.x + n.w / 2, n.y + n.h / 2);
+}
+function drawParts() {
+  parts = parts.filter(p => p.life > 0);
+  for (const p of parts) {
+    p.x += p.vx; p.y += p.vy; p.vx *= 0.97; p.vy *= 0.97; p.life -= p.decay;
+    if (p.life <= 0) continue;
+    ctx.globalAlpha = p.life * 0.7;
+    ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.1, p.r * p.life), 0, Math.PI * 2);
+    ctx.fillStyle = p.col; ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
-function drawArrow(from, to, progress, label) {
-  const fx = from.x + from.w / 2, fy = from.y + from.h / 2;
-  const tx = to.x + to.w / 2, ty = to.y + to.h / 2;
+// ── Draw node ──
+function drawNode(n, active, done) {
+  const cx = n.x + n.w / 2, cy = n.y + n.h / 2;
+  const phase = curStep >= 0 && curStep < S.length ? S[curStep].ph : "create";
+  const ac = PC[phase] || "#58a6ff";
 
-  // Edge clipping
-  const angle = Math.atan2(ty - fy, tx - fx);
-  const sx = from.x + from.w / 2 + Math.cos(angle) * (from.w / 2 + 4);
-  const sy = from.y + from.h / 2 + Math.sin(angle) * (from.h / 2 + 4);
-  const ex = to.x + to.w / 2 - Math.cos(angle) * (to.w / 2 + 4);
-  const ey = to.y + to.h / 2 - Math.sin(angle) * (to.h / 2 + 4);
+  // Glow
+  if (active) {
+    ctx.save();
+    ctx.shadowColor = ac; ctx.shadowBlur = 28;
+    rr(n.x - 2, n.y - 2, n.w + 4, n.h + 4, 12);
+    ctx.fillStyle = ac + "10"; ctx.fill();
+    ctx.restore();
+  }
+
+  // Card
+  const bg = ctx.createLinearGradient(n.x, n.y, n.x, n.y + n.h);
+  bg.addColorStop(0, active ? "#1a2638" : done ? "#10151c" : "#0c1016");
+  bg.addColorStop(1, active ? "#141c2b" : done ? "#0c1016" : "#090c10");
+  rr(n.x, n.y, n.w, n.h, 10);
+  ctx.fillStyle = bg; ctx.fill();
+  ctx.strokeStyle = active ? ac + "bb" : done ? n.color + "44" : n.color + "22";
+  ctx.lineWidth = active ? 1.8 : 1; ctx.stroke();
+
+  // Content
+  const isBig = n.kind === "svc" || n.kind === "actor";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = isBig ? "15px sans-serif" : "13px sans-serif";
+  ctx.fillText(n.icon, cx - n.w * 0.28, cy);
+  ctx.font = (active ? "600 " : "500 ") + (isBig ? "11.5" : "10.5") + "px 'Inter',system-ui,sans-serif";
+  ctx.fillStyle = active ? "#f0f6fc" : done ? n.color + "bb" : n.color + "77";
+  ctx.fillText(n.label, cx + 14, cy + 1);
+}
+
+// ── Bezier edge helpers ──
+function edgePoints(a, b) {
+  const ax = a.x + a.w / 2, ay = a.y + a.h / 2;
+  const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+  const ang = Math.atan2(by - ay, bx - ax);
+  return {
+    sx: ax + Math.cos(ang) * (a.w / 2 + 5),
+    sy: ay + Math.sin(ang) * (a.h / 2 + 5),
+    ex: bx - Math.cos(ang) * (b.w / 2 + 5),
+    ey: by - Math.sin(ang) * (b.h / 2 + 5),
+  };
+}
+function qPoint(p, t) {
+  const mx = (p.sx + p.ex) / 2, my = (p.sy + p.ey) / 2;
+  const u = 1 - t;
+  return { x: u*u*p.sx + 2*u*t*mx + t*t*p.ex, y: u*u*p.sy + 2*u*t*my + t*t*p.ey };
+}
+
+function drawEdge(si, prog) {
+  const s = S[si];
+  const a = N[s.f], b = N[s.t];
+  const p = edgePoints(a, b);
+  const mx = (p.sx + p.ex) / 2, my = (p.sy + p.ey) / 2;
+  const isActive = prog >= 0 && prog <= 1;
+  const isDone = si < curStep;
+  const pc = PC[s.ph] || "#58a6ff";
 
   // Line
-  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey);
-  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(p.sx, p.sy); ctx.quadraticCurveTo(mx, my, p.ex, p.ey);
+  if (isActive) {
+    const g = ctx.createLinearGradient(p.sx, p.sy, p.ex, p.ey);
+    g.addColorStop(0, pc + "99"); g.addColorStop(1, pc + "44");
+    ctx.strokeStyle = g; ctx.lineWidth = 2.5;
+  } else {
+    ctx.strokeStyle = isDone ? "#222a38" : "#151a22"; ctx.lineWidth = isDone ? 1 : 0.7;
+  }
+  ctx.stroke();
 
-  // Arrowhead
-  const aLen = 8, aAng = 0.4;
-  const a2 = Math.atan2(ey - sy, ex - sx);
+  // Arrow
+  const at = qPoint(p, 0.96), at2 = qPoint(p, 0.92);
+  const aa = Math.atan2(at.y - at2.y, at.x - at2.x);
+  const al = isActive ? 9 : 6;
   ctx.beginPath();
-  ctx.moveTo(ex, ey);
-  ctx.lineTo(ex - aLen * Math.cos(a2 - aAng), ey - aLen * Math.sin(a2 - aAng));
-  ctx.moveTo(ex, ey);
-  ctx.lineTo(ex - aLen * Math.cos(a2 + aAng), ey - aLen * Math.sin(a2 + aAng));
-  ctx.strokeStyle = '#484f58'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.moveTo(p.ex, p.ey);
+  ctx.lineTo(p.ex - al * Math.cos(aa - 0.35), p.ey - al * Math.sin(aa - 0.35));
+  ctx.lineTo(p.ex - al * Math.cos(aa + 0.35), p.ey - al * Math.sin(aa + 0.35));
+  ctx.closePath();
+  ctx.fillStyle = isActive ? pc + "cc" : isDone ? "#222a38" : "#151a22";
+  ctx.fill();
 
-  // Animated dot
-  if (progress !== undefined && progress >= 0 && progress <= 1) {
-    const dx = sx + (ex - sx) * progress;
-    const dy = sy + (ey - sy) * progress;
-    ctx.beginPath(); ctx.arc(dx, dy, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff7b72'; ctx.fill();
-    ctx.shadowColor = '#ff7b72'; ctx.shadowBlur = 12;
-    ctx.beginPath(); ctx.arc(dx, dy, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff7b72'; ctx.fill();
-    ctx.shadowBlur = 0;
+  if (!isActive) return;
 
-    // Label near dot
-    if (label) {
-      ctx.fillStyle = '#e6edf3'; ctx.font = '10px system-ui';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-      ctx.fillText(label, dx, dy - 10);
-    }
+  // Trail
+  const cp = Math.max(0, Math.min(1, prog));
+  for (let i = 5; i >= 0; i--) {
+    const tt = cp - i * 0.035;
+    if (tt < 0) continue;
+    const tp = qPoint(p, tt);
+    ctx.globalAlpha = (1 - i / 6) * 0.6;
+    ctx.beginPath(); ctx.arc(tp.x, tp.y, 4 - i * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = pc; ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Main dot with glow
+  const dp = qPoint(p, cp);
+  ctx.save();
+  ctx.shadowColor = pc; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.arc(dp.x, dp.y, 5.5, 0, Math.PI * 2);
+  const dg = ctx.createRadialGradient(dp.x, dp.y, 0, dp.x, dp.y, 5.5);
+  dg.addColorStop(0, "#fff"); dg.addColorStop(0.5, pc); dg.addColorStop(1, pc + "00");
+  ctx.fillStyle = dg; ctx.fill();
+  ctx.restore();
+
+  // Particles at arrival
+  if (prog > 0.92 && prog < 1.05 && Math.random() < 0.3) spawnP(dp.x, dp.y, pc);
+
+  // Floating label
+  if (s.lbl && cp > 0.15 && cp < 0.9) {
+    const lp = qPoint(p, cp);
+    ctx.font = "500 10px 'Inter',system-ui,sans-serif";
+    const tw = ctx.measureText(s.lbl).width;
+    rr(lp.x - tw / 2 - 8, lp.y - 26, tw + 16, 20, 6);
+    ctx.fillStyle = "#0d1117ee"; ctx.fill();
+    ctx.strokeStyle = pc + "33"; ctx.lineWidth = 0.5; ctx.stroke();
+    ctx.fillStyle = "#e6edf3"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(s.lbl, lp.x, lp.y - 16);
   }
 }
 
-// ── Animation state ──
-let currentStep = -1;
-let stepProgress = 0;
-let playing = true;
-let speed = 1;
-let lastTime = 0;
-const STEP_DURATION = 2000; // ms per step
+// ── State ──
+let curStep = -1, stepProg = 0, playing = true, speed = 1, lastT = 0;
+const DUR = 1800;
 
 function setStep(i) {
-  currentStep = Math.max(-1, Math.min(i, steps.length - 1));
-  stepProgress = 0;
-  updateInfo();
+  curStep = Math.max(-1, Math.min(i, S.length - 1));
+  stepProg = 0;
+  updInfo();
 }
 
-function updateInfo() {
-  if (currentStep < 0 || currentStep >= steps.length) {
-    info.innerHTML = '<h3>Ready</h3><p>Press <strong>Play</strong> to watch the happy path.</p>';
+function updInfo() {
+  const pct = curStep < 0 ? 0 : (curStep + 1) / S.length * 100;
+  document.getElementById("progFill").style.width = pct + "%";
+  const el = document.getElementById("info");
+  if (curStep < 0 || curStep >= S.length) {
+    el.innerHTML = '<h3>Ready</h3><p>Press <b>Play</b> or <b>Space</b> to start.</p>';
     return;
   }
-  const s = steps[currentStep];
-  info.innerHTML = `<h3>Step ${currentStep + 1}/${steps.length}: ${s.desc}</h3><p>${s.detail}</p>`;
+  const s = S[curStep], pc = PC[s.ph] || "#58a6ff";
+  el.innerHTML = '<h3 style="color:' + pc + '">Step ' + (curStep+1) + '/' + S.length + ' \u2014 ' + s.desc + '</h3><p>' + s.det + '</p>';
 }
 
-function draw(time) {
-  const dt = time - lastTime;
-  lastTime = time;
+function updBtns() {
+  document.getElementById("btnPlay").classList.toggle("active", playing);
+  document.getElementById("btnPause").classList.toggle("active", !playing);
+}
 
+// ── Render ──
+function frame(t) {
+  const dt = Math.min(t - lastT, 50); lastT = t;
   ctx.clearRect(0, 0, W, H);
 
-  // Draw all static edges (completed steps)
-  for (let i = 0; i < steps.length; i++) {
-    const s = steps[i];
-    const from = nodes[s.from], to = nodes[s.to];
-    if (i < currentStep) {
-      drawArrow(from, to, -1);
-    } else if (i === currentStep) {
-      drawArrow(from, to, stepProgress, s.label);
-    } else {
-      drawArrow(from, to, -1);
+  const doneSet = new Set();
+  for (let i = 0; i < curStep && i < S.length; i++) { doneSet.add(S[i].f); doneSet.add(S[i].t); }
+
+  // Edges
+  for (let i = 0; i < S.length; i++) drawEdge(i, i === curStep ? stepProg : -1);
+
+  // Particles
+  drawParts();
+
+  // Nodes
+  for (const k in N) {
+    const active = curStep >= 0 && curStep < S.length && (S[curStep].f === k || S[curStep].t === k);
+    drawNode(N[k], active, doneSet.has(k));
+  }
+
+  // Badge
+  if (curStep >= 0 && curStep < S.length) {
+    const pc = PC[S[curStep].ph] || "#58a6ff";
+    ctx.font = "600 11px 'Inter',system-ui,sans-serif"; ctx.textAlign = "right"; ctx.textBaseline = "top";
+    const txt = (curStep + 1) + " / " + S.length;
+    const tw = ctx.measureText(txt).width;
+    rr(W - tw - 28, 14, tw + 20, 24, 7);
+    ctx.fillStyle = pc + "1a"; ctx.fill();
+    ctx.strokeStyle = pc + "44"; ctx.lineWidth = 0.5; ctx.stroke();
+    ctx.fillStyle = pc; ctx.fillText(txt, W - 18, 20);
+  }
+
+  // Advance
+  if (playing && curStep >= 0 && curStep < S.length) {
+    stepProg += dt * speed / DUR;
+    if (stepProg >= 1.4) {
+      if (curStep < S.length - 1) { curStep++; stepProg = 0; updInfo(); }
+      else { playing = false; updBtns(); document.getElementById("progFill").style.width = "100%"; }
     }
   }
 
-  // Draw nodes
-  for (const key in nodes) {
-    const n = nodes[key];
-    const active = currentStep >= 0 && currentStep < steps.length &&
-      (steps[currentStep].from === key || steps[currentStep].to === key);
-    drawNode(n, active);
-  }
-
-  // Step counter
-  ctx.fillStyle = '#484f58'; ctx.font = '11px system-ui';
-  ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-  if (currentStep >= 0) {
-    ctx.fillText(`Step ${currentStep + 1} / ${steps.length}`, W - 10, 10);
-  }
-
-  // Advance animation
-  if (playing && currentStep >= 0 && currentStep < steps.length) {
-    stepProgress += (dt * speed) / STEP_DURATION;
-    if (stepProgress >= 1.3) { // linger a bit after arrival
-      if (currentStep < steps.length - 1) {
-        currentStep++;
-        stepProgress = 0;
-        updateInfo();
-      } else {
-        playing = false;
-        updateButtons();
-      }
-    }
-  }
-
-  requestAnimationFrame(draw);
-}
-
-function updateButtons() {
-  document.getElementById('btn-play').classList.toggle('active', playing);
-  document.getElementById('btn-pause').classList.toggle('active', !playing);
+  requestAnimationFrame(frame);
 }
 
 // ── Controls ──
-document.getElementById('btn-play').onclick = () => {
-  if (currentStep < 0 || currentStep >= steps.length - 1) setStep(0);
-  playing = true; updateButtons();
+document.getElementById("btnPlay").onclick = function() {
+  if (curStep < 0 || curStep >= S.length - 1) setStep(0);
+  playing = true; updBtns();
 };
-document.getElementById('btn-pause').onclick = () => {
-  playing = false; updateButtons();
+document.getElementById("btnPause").onclick = function() { playing = false; updBtns(); };
+document.getElementById("btnReset").onclick = function() { playing = false; setStep(-1); updBtns(); };
+document.getElementById("btnPrev").onclick = function() {
+  playing = false; setStep(curStep > 0 ? curStep - 1 : 0); stepProg = 1; updBtns();
 };
-document.getElementById('btn-reset').onclick = () => {
-  playing = false; setStep(-1); updateButtons();
+document.getElementById("btnNext").onclick = function() {
+  playing = false; setStep(curStep < S.length - 1 ? curStep + 1 : 0); stepProg = 1; updBtns();
 };
-document.getElementById('btn-step').onclick = () => {
-  playing = false;
-  if (currentStep < steps.length - 1) setStep(currentStep + 1);
-  else setStep(0);
-  stepProgress = 1.0;
-  updateButtons();
-};
-document.getElementById('speed').oninput = (e) => {
+document.getElementById("speedSlider").oninput = function(e) {
   speed = parseFloat(e.target.value);
-  document.getElementById('speed-val').textContent = speed + 'x';
+  document.getElementById("speedVal").textContent = speed.toFixed(1) + "x";
 };
+document.addEventListener("keydown", function(e) {
+  if (e.code === "Space") { e.preventDefault(); playing ? document.getElementById("btnPause").click() : document.getElementById("btnPlay").click(); }
+  if (e.code === "ArrowRight") { e.preventDefault(); document.getElementById("btnNext").click(); }
+  if (e.code === "ArrowLeft") { e.preventDefault(); document.getElementById("btnPrev").click(); }
+  if (e.code === "KeyR") document.getElementById("btnReset").click();
+});
 
-updateInfo();
-requestAnimationFrame(draw);
+updInfo();
+requestAnimationFrame(frame);
 </script>
 </body>
 </html>
