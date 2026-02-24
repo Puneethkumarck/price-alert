@@ -24,7 +24,7 @@ public class AlertService {
     private final AlertRepository alertRepository;
     private final AlertEventPublisher eventPublisher;
 
-public Alert createAlert(String userId, String symbol, BigDecimal thresholdPrice, Direction direction, String note) {
+    public Alert createAlert(String userId, String symbol, BigDecimal thresholdPrice, Direction direction, String note) {
         var now = Instant.now();
         var alert = Alert.builder()
                 .id(UlidGenerator.generate())
@@ -44,7 +44,7 @@ public Alert createAlert(String userId, String symbol, BigDecimal thresholdPrice
         return saved;
     }
 
-public Alert getAlert(String alertId, String userId) {
+    public Alert getAlert(String alertId, String userId) {
         var alert = alertRepository.findById(alertId)
                 .orElseThrow(() -> AlertNotFoundException.of(alertId));
         if (!alert.userId().equals(userId)) {
@@ -53,11 +53,11 @@ public Alert getAlert(String alertId, String userId) {
         return alert;
     }
 
-public Page<Alert> listAlerts(String userId, AlertStatus status, String symbol, Pageable pageable) {
+    public Page<Alert> listAlerts(String userId, AlertStatus status, String symbol, Pageable pageable) {
         return alertRepository.findByUserIdAndOptionalFilters(userId, status, symbol, pageable);
     }
 
-public Alert updateAlert(String alertId, String userId, BigDecimal thresholdPrice, Direction direction, String note) {
+    public Alert updateAlert(String alertId, String userId, BigDecimal thresholdPrice, Direction direction, String note) {
         var alert = getAlert(alertId, userId);
 
         var updated = alert.toBuilder()
@@ -73,7 +73,7 @@ public Alert updateAlert(String alertId, String userId, BigDecimal thresholdPric
         return saved;
     }
 
-public void deleteAlert(String alertId, String userId) {
+    public void deleteAlert(String alertId, String userId) {
         var alert = getAlert(alertId, userId);
 
         var deleted = alert.toBuilder()

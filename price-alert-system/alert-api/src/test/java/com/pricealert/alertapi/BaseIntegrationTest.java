@@ -45,5 +45,7 @@ public abstract class BaseIntegrationTest {
                 () -> "org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration,"
                         + "org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration");
         registry.add("alert.daily-reset.cron", () -> "-");
+        registry.add("namastack.outbox.poll-interval", () -> "500");
+        registry.add("namastack.outbox.batch-size", () -> "50");
     }
 }

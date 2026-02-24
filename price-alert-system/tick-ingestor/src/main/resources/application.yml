@@ -11,12 +11,37 @@ ingestor:
     multiplier: 2
 
 spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/price_alerts
+    username: alerts
+    password: alerts_local
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
   kafka:
     bootstrap-servers: localhost:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
       acks: "1"
+
+namastack:
+  outbox:
+    poll-interval: 500
+    batch-size: 100
+    jdbc:
+      schema:
+        auto-create: false
+    retry:
+      policy: exponential
+      max-retries: 3
+      exponential:
+        initial-delay: 500
+        max-delay: 10000
+        multiplier: 2.0
 
 management:
   endpoints:

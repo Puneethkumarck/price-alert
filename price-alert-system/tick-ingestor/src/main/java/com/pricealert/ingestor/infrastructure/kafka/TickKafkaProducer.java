@@ -1,24 +1,23 @@
 package com.pricealert.ingestor.infrastructure.kafka;
 
 import com.pricealert.common.event.MarketTick;
-import com.pricealert.common.kafka.KafkaTopics;
+import io.namastack.outbox.Outbox;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class TickKafkaProducer {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final Outbox outbox;
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
-    public TickKafkaProducer(KafkaTemplate<String, Object> kafkaTemplate) {
-        this.kafkaTemplate = kafkaTemplate;
-    }
-
+    @Transactional
     public void send(String tickJson) {
         try {
             var node = objectMapper.readTree(tickJson);
@@ -29,9 +28,9 @@ public class TickKafkaProducer {
             }
 
             var tick = objectMapper.readValue(tickJson, MarketTick.class);
-            kafkaTemplate.send(KafkaTopics.MARKET_TICKS, tick.symbol(), tick);
+            outbox.schedule(tick, tick.symbol());
         } catch (Exception e) {
-            log.error("Failed to send tick to Kafka: {}", e.getMessage());
+            log.error("Failed to schedule tick to outbox: {}", e.getMessage());
         }
     }
 }

@@ -8,10 +8,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Kafka consumer for market-ticks topic.
- * For each tick: evaluates alerts → produces triggers → async DB status update.
+ * For each tick: evaluates alerts → schedules triggers to outbox → async DB status update.
  */
 @Slf4j
 @Component
@@ -27,6 +28,7 @@ public class MarketTickConsumer {
             groupId = "evaluator-ticks",
             containerFactory = "marketTickListenerContainerFactory"
     )
+    @Transactional
     public void onMarketTick(MarketTick tick) {
         var triggers = evaluationEngine.evaluate(tick.symbol(), tick.price(), tick.timestamp());
 

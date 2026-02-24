@@ -11,6 +11,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-kafka")
     implementation("org.springframework.boot:spring-boot-starter-json")
     implementation("org.mapstruct:mapstruct:1.6.3")
+    implementation("io.namastack:namastack-outbox-starter-jpa:1.0.0")
     runtimeOnly("org.postgresql:postgresql")
 
     annotationProcessor("org.mapstruct:mapstruct-processor:1.6.3")

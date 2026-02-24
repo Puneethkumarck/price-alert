@@ -30,6 +30,21 @@ evaluator:
   warmup:
     batch-size: 10000
 
+namastack:
+  outbox:
+    poll-interval: 1000
+    batch-size: 50
+    jdbc:
+      schema:
+        auto-create: false
+    retry:
+      policy: exponential
+      max-retries: 3
+      exponential:
+        initial-delay: 500
+        max-delay: 30000
+        multiplier: 2.0
+
 management:
   endpoints:
     web:

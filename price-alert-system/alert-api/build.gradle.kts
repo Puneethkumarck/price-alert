@@ -16,6 +16,7 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.mapstruct:mapstruct:1.6.3")
+    implementation("io.namastack:namastack-outbox-starter-jpa:1.0.0")
     runtimeOnly("org.postgresql:postgresql")
 
     annotationProcessor("org.mapstruct:mapstruct-processor:1.6.3")

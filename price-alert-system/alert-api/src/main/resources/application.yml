@@ -31,6 +31,21 @@ alert:
     cron: "0 30 9 * * MON-FRI"
     timezone: America/New_York
 
+namastack:
+  outbox:
+    poll-interval: 2000
+    batch-size: 20
+    jdbc:
+      schema:
+        auto-create: false
+    retry:
+      policy: exponential
+      max-retries: 5
+      exponential:
+        initial-delay: 1000
+        max-delay: 60000
+        multiplier: 2.0
+
 management:
   endpoints:
     web:
