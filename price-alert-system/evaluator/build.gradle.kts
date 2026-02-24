@@ -7,6 +7,7 @@ dependencies {
     implementation(project(":common"))
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-kafka")
     implementation("org.springframework.boot:spring-boot-starter-json")
     implementation("org.mapstruct:mapstruct:1.6.3")
@@ -20,5 +21,6 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:kafka")
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

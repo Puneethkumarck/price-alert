@@ -20,5 +20,6 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:kafka")
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

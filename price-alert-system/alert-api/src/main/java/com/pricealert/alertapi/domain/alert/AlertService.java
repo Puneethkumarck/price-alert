@@ -12,7 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -25,8 +24,7 @@ public class AlertService {
     private final AlertRepository alertRepository;
     private final AlertEventPublisher eventPublisher;
 
-    @Transactional
-    public Alert createAlert(String userId, String symbol, BigDecimal thresholdPrice, Direction direction, String note) {
+public Alert createAlert(String userId, String symbol, BigDecimal thresholdPrice, Direction direction, String note) {
         var now = Instant.now();
         var alert = Alert.builder()
                 .id(UlidGenerator.generate())
@@ -46,8 +44,7 @@ public class AlertService {
         return saved;
     }
 
-    @Transactional(readOnly = true)
-    public Alert getAlert(String alertId, String userId) {
+public Alert getAlert(String alertId, String userId) {
         var alert = alertRepository.findById(alertId)
                 .orElseThrow(() -> AlertNotFoundException.of(alertId));
         if (!alert.userId().equals(userId)) {
@@ -56,13 +53,11 @@ public class AlertService {
         return alert;
     }
 
-    @Transactional(readOnly = true)
-    public Page<Alert> listAlerts(String userId, AlertStatus status, String symbol, Pageable pageable) {
+public Page<Alert> listAlerts(String userId, AlertStatus status, String symbol, Pageable pageable) {
         return alertRepository.findByUserIdAndOptionalFilters(userId, status, symbol, pageable);
     }
 
-    @Transactional
-    public Alert updateAlert(String alertId, String userId, BigDecimal thresholdPrice, Direction direction, String note) {
+public Alert updateAlert(String alertId, String userId, BigDecimal thresholdPrice, Direction direction, String note) {
         var alert = getAlert(alertId, userId);
 
         var updated = alert.toBuilder()
@@ -78,8 +73,7 @@ public class AlertService {
         return saved;
     }
 
-    @Transactional
-    public void deleteAlert(String alertId, String userId) {
+public void deleteAlert(String alertId, String userId) {
         var alert = getAlert(alertId, userId);
 
         var deleted = alert.toBuilder()
