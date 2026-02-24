@@ -12,18 +12,17 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class TickKafkaProducer {
 
-    private final KafkaTemplate<String, MarketTick> kafkaTemplate;
-    private final ObjectMapper objectMapper;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
-    public TickKafkaProducer(KafkaTemplate<String, MarketTick> kafkaTemplate) {
+    public TickKafkaProducer(KafkaTemplate<String, Object> kafkaTemplate) {
         this.kafkaTemplate = kafkaTemplate;
-        this.objectMapper = JsonMapper.builder().build();
     }
 
     public void send(String tickJson) {
         try {
             var node = objectMapper.readTree(tickJson);
-            var type = node.path("type").asText("");
+            var type = node.path("type").asString("");
 
             if (!"TICK".equals(type)) {
                 return;

@@ -6,11 +6,12 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:19092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092,EXTERNAL://localhost:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -31,11 +32,11 @@ services:
     command:
       - |
         echo "Creating Kafka topics..."
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic market-ticks --partitions 16 --replication-factor 1 --config retention.ms=14400000
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic alert-changes --partitions 8 --replication-factor 1 --config retention.ms=86400000
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic alert-triggers --partitions 8 --replication-factor 1 --config retention.ms=604800000
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic market-ticks --partitions 16 --replication-factor 1 --config retention.ms=14400000
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic alert-changes --partitions 8 --replication-factor 1 --config retention.ms=86400000
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic alert-triggers --partitions 8 --replication-factor 1 --config retention.ms=604800000
         echo "Topics created:"
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list
 
   postgres:
     image: postgres:17
@@ -62,6 +63,104 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # ---- Application Services ----
+
+  alert-api:
+    build:
+      context: .
+      args:
+        MODULE: alert-api
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/price_alerts
+      SPRING_DATASOURCE_USERNAME: alerts
+      SPRING_DATASOURCE_PASSWORD: alerts_local
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      SPRING_DATA_REDIS_HOST: redis
+      JWT_SECRET: price-alert-dev-secret-key-change-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: wget -qO- http://localhost:8080/actuator/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  market-feed-simulator:
+    build:
+      context: .
+      args:
+        MODULE: market-feed-simulator
+    ports:
+      - "8085:8085"
+    healthcheck:
+      test: wget -qO- http://localhost:8085/actuator/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  tick-ingestor:
+    build:
+      context: .
+      args:
+        MODULE: tick-ingestor
+    environment:
+      INGESTOR_SIMULATOR_URL: ws://market-feed-simulator:8085/v1/feed
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+    depends_on:
+      market-feed-simulator:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: wget -qO- http://localhost:8081/actuator/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  evaluator:
+    build:
+      context: .
+      args:
+        MODULE: evaluator
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/price_alerts
+      SPRING_DATASOURCE_USERNAME: alerts
+      SPRING_DATASOURCE_PASSWORD: alerts_local
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      alert-api:
+        condition: service_healthy
+
+  notification-persister:
+    build:
+      context: .
+      args:
+        MODULE: notification-persister
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/price_alerts
+      SPRING_DATASOURCE_USERNAME: alerts
+      SPRING_DATASOURCE_PASSWORD: alerts_local
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+    depends_on:
+      alert-api:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:
