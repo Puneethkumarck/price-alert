@@ -2,13 +2,13 @@
 
 A real-time price alert system for US equities. Users create alerts (e.g., "notify me when AAPL goes above $150"), the system continuously evaluates live market ticks against those alerts, and delivers notifications when thresholds are crossed.
 
-Built with hexagonal architecture, transactional outbox pattern, 4-layer deduplication, and full observability via Grafana/Prometheus/Loki/Tempo.
+Built with hexagonal architecture, transactional outbox pattern, 4-layer deduplication, full observability via Grafana/Prometheus/Loki/Tempo, and production-ready performance tuning (ZGC, batch Kafka consumers, Redis rate limiting, lock-free evaluation index, multi-node Kafka, PostgreSQL read replica routing).
 
 ---
 
 ## Architecture
 
-6 Spring Boot microservices + 7 infrastructure services (13 Docker containers total), communicating via Kafka with PostgreSQL for persistence and a transactional outbox for reliable event delivery.
+6 Spring Boot microservices + 9 infrastructure services (up to 17 Docker containers), communicating via a 3-broker Kafka cluster with PostgreSQL for persistence and a transactional outbox for reliable event delivery. The evaluator can run as 2 instances (partitions split by Kafka consumer group rebalancing).
 
 ```
 ┌──────────┐    ┌───────────────┐    ┌────────────────┐    ┌──────────────────┐
@@ -50,10 +50,10 @@ Built with hexagonal architecture, transactional outbox pattern, 4-layer dedupli
 
 | Service | Port | Responsibility |
 |---|---|---|
-| **alert-api** | 8080 | REST CRUD for alerts and notifications. JWT authentication. Daily reset scheduler. Publishes alert lifecycle events via outbox. Custom metrics: `alerts.created/updated/deleted`. |
+| **alert-api** | 8080 | REST CRUD for alerts and notifications. JWT authentication + blacklist (Redis). Per-user rate limiting (10 creates/min via Redis). Daily reset scheduler. Publishes alert lifecycle events via outbox. Custom metrics: `alerts.created/updated/deleted`. Read queries routed to PostgreSQL replica via `AbstractRoutingDataSource`. |
 | **market-feed-simulator** | 8085 | Generates random-walk price ticks for 50 US equities via WebSocket. Synchronized per-session writes to prevent concurrent WebSocket errors. |
 | **tick-ingestor** | 8081 | Connects to simulator WebSocket, publishes ticks to Kafka via outbox. Tuned for high throughput: 500 records/batch, 200ms poll, 64MB producer buffer. |
-| **evaluator** | 8082 | Consumes alert-changes (indexes alerts in memory) and market-ticks (evaluates against thresholds). Produces alert-triggers via outbox. Custom metrics: `evaluator.ticks.processed/alerts.triggered` + index gauges. |
+| **evaluator** | 8082 | Consumes alert-changes (indexes alerts in memory) and market-ticks (evaluates against thresholds). Lock-free `SymbolAlertIndex` — each Kafka partition owns a disjoint symbol set so no locking is needed. Batch consumer (up to 90% less transaction overhead). Warm-up is paginated to prevent OOM. Can run as 2 instances. Produces alert-triggers via outbox. Custom metrics: `evaluator.ticks.processed/alerts.triggered` + index gauges. |
 | **notification-persister** | 8083 | Consumes alert-triggers, persists notifications and trigger logs with 4-layer idempotent deduplication. Custom metrics: `notifications.persisted/deduplicated`. |
 | **common** | — | Shared module: event DTOs (AlertChange, AlertTrigger, MarketTick), ULID generator, Kafka topic constants, Jackson config. |
 
@@ -61,9 +61,9 @@ Built with hexagonal architecture, transactional outbox pattern, 4-layer dedupli
 
 | Component | Version | Port | Purpose |
 |---|---|---|---|
-| Apache Kafka | 3.9.0 (KRaft) | 9092 | Event streaming (3 topics: market-ticks, alert-changes, alert-triggers) |
-| PostgreSQL | 17 | 5432 | Alerts, notifications, trigger logs, 9 outbox tables, Flyway migrations |
-| Redis | 7 | 6379 | Rate limiting / caching (available for future use) |
+| Apache Kafka | 3.9.0 (KRaft) | 9092–9094 | 3-broker cluster. 3 topics: market-ticks (16 partitions, RF=3), alert-changes (8, RF=3), alert-triggers (8, RF=3). Controller quorum across all 3 brokers. |
+| PostgreSQL | 17 | 5432 | Alerts, notifications, trigger logs, 9 outbox tables, Flyway migrations. Primary for writes; replica for read-only queries (warm-up, notifications). |
+| Redis | 7 | 6379 | Per-user rate limiting (alert creation: 10/min via `INCR`/`EXPIRE`). JWT token blacklist for logout (`SET blacklist:{jti} EX ttl`). |
 | Prometheus | latest | 9090 | Metrics collection — scrapes all 5 services at `/actuator/prometheus` every 15s |
 | Grafana | latest | 3000 | Dashboards — 3 pre-built dashboards, 3 auto-provisioned datasources (admin/admin) |
 | Loki + Promtail | latest | 3100 | Centralized log aggregation — structured JSON logs from all Docker containers |
@@ -289,11 +289,13 @@ Accessible at **http://localhost:3000** (Grafana, admin/admin).
 
 ## Kafka Topics
 
-| Topic | Partitions | Retention | Key | Producer | Consumer |
-|---|---|---|---|---|---|
-| `market-ticks` | 16 | 4 hours | symbol | tick-ingestor (outbox) | evaluator |
-| `alert-changes` | 8 | 24 hours | symbol | alert-api (outbox) | evaluator |
-| `alert-triggers` | 8 | 7 days | userId | evaluator (outbox) | notification-persister |
+| Topic | Partitions | RF | Retention | Key | Producer | Consumer |
+|---|---|---|---|---|---|---|
+| `market-ticks` | 16 | 3 | 4 hours | symbol | tick-ingestor (outbox) | evaluator (concurrency=16) |
+| `alert-changes` | 8 | 3 | 24 hours | symbol | alert-api (outbox) | evaluator (concurrency=8) |
+| `alert-triggers` | 8 | 3 | 7 days | userId | evaluator (outbox) | notification-persister |
+
+Symbols are keyed by `symbol` so all ticks and alert-changes for a given symbol land on the same partition → same consumer thread → no lock contention on `SymbolAlertIndex`.
 
 ---
 
@@ -369,6 +371,12 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`) and h
 }
 ```
 
+### Auth
+
+| Method | Path | Description |
+|---|---|---|
+| `DELETE` | `/api/v1/auth/logout` | Revoke current token — writes `jti` to Redis blacklist with TTL = remaining token validity. Returns 204. Requires `jti` claim in token. |
+
 ### Notifications
 
 | Method | Path | Description |
@@ -418,6 +426,8 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`) and h
 ## Security
 
 - **JWT authentication** — HMAC-SHA256 signed tokens, validated by `JwtAuthenticationFilter`
+- **JWT blacklist** — `DELETE /api/v1/auth/logout` writes `blacklist:{jti}` to Redis with TTL = remaining token validity; every request checks the blacklist before authenticating
+- **Rate limiting** — `POST /api/v1/alerts` enforces 10 creations/minute per user via Redis `INCR`/`EXPIRE`; returns HTTP 429 on breach
 - **Method-level security** — `@EnableMethodSecurity` + `@PreAuthorize("isAuthenticated()")` on every endpoint
 - **Ownership enforcement** — `AlertService` verifies `alert.userId == requestor` on get/update/delete
 - **5xx error sanitization** — `GlobalExceptionHandler` returns "Internal server error", never leaks internals
@@ -455,16 +465,16 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`) and h
 
 | Scope | Count | What's Tested |
 |---|---|---|
-| Unit (evaluator) | 44 | SymbolAlertIndex (28), EvaluationEngine (8), AlertIndexManager (8) |
-| Unit (alert-api) | 8 | AlertService CRUD with BDDMockito |
+| Unit (evaluator) | 44 | SymbolAlertIndex — AddRemove (4), Above (6), Below (4), Cross (7), MixedDirections (2), EdgeCases (5). EvaluationEngine (8). AlertIndexManager (8). |
+| Unit (alert-api) | 5 | AlertService — Create (1), Get (3), Update (2), Delete (1), List (1) with BDDMockito |
 | Architecture | 3 | Hexagonal layer dependencies via ArchUnit 1.3.2 |
-| Integration (CRUD) | 25 | REST endpoints, auth, validation, pagination, ownership |
-| Integration (E2E) | 8 | Alert create → Kafka event → status lifecycle → notifications |
-| Integration (dedup) | 13 | All 4 dedup layers (conditional update, idempotency key, trigger log) |
-| Integration (scheduler) | 4 | Daily reset TRIGGERED_TODAY → ACTIVE, advisory lock, multi-user |
-| **Total** | **105** | |
+| Integration (CRUD) | 21 | REST endpoints: Create (6), Get (3), List (5), Update (5), Delete (3), Auth (3) |
+| Integration (E2E) | 8 | AlertCreationToKafka (2), NotificationRetrieval (3), AlertStatusLifecycle (2), FullHappyPath (1) |
+| Integration (dedup) | 13 | Layer2ConditionalStatusUpdate (4), Layer3NotificationIdempotencyKey (4), Layer4TriggerLogDedup (4), CrossLayerDedup (1) |
+| Integration (scheduler) | 4 | Daily reset TRIGGERED_TODAY → ACTIVE, no-op, multi-user, idempotent |
+| **Total** | **113** | |
 
-Integration tests use Testcontainers (PostgreSQL 17 + Kafka KRaft 7.7.1) with singleton containers shared across all test classes. Outbox configured with `alertapi_` table prefix and 500ms poll interval in tests.
+Integration tests use Testcontainers (PostgreSQL 17, Kafka KRaft 7.7.1, Redis 7) with singleton containers shared across all test classes. The `BaseIntegrationTest` centralises cleanup in FK-safe order (trigger_log → notifications → alerts) and wires the routing datasource correctly.
 
 ---
 
@@ -482,27 +492,27 @@ price-alert-system/
 ├── alert-api/                      # REST API service
 │   └── src/main/java/.../alertapi/
 │       ├── application/
-│       │   ├── controller/         # AlertController, NotificationController, GlobalExceptionHandler
-│       │   ├── service/            # AlertCommandHandler (@Transactional orchestrator)
-│       │   ├── config/             # MetricsConfig (alerts.created/updated/deleted counters)
-│       │   ├── security/           # JwtAuthenticationFilter, SecurityConfig, JwtProperties
+│       │   ├── controller/         # AlertController, NotificationController, AuthController, GlobalExceptionHandler
+│       │   ├── service/            # AlertCommandHandler (rate limiting + @Transactional orchestrator)
+│       │   ├── config/             # MetricsConfig, DataSourceConfig (routing datasource → replica)
+│       │   ├── security/           # JwtAuthenticationFilter (+ blacklist check), JwtClaims, SecurityConfig, JwtProperties
 │       │   └── job/                # DailyResetScheduler
 │       ├── domain/
 │       │   ├── alert/              # Alert, AlertService, AlertRepository, AlertEventPublisher
 │       │   ├── notification/       # Notification, NotificationRepository
 │       │   ├── triggerlog/         # AlertTriggerLog
-│       │   └── exceptions/         # AlertNotFoundException, AlertNotOwnedException
+│       │   └── exceptions/         # AlertNotFoundException, AlertNotOwnedException, RateLimitExceededException
 │       └── infrastructure/
 │           ├── db/                  # JPA entities, repositories, adapters, MapStruct mappers
 │           └── kafka/              # AlertChangePublisher, AlertChangeOutboxHandler
 │
 ├── evaluator/                      # Evaluation service
 │   └── src/main/java/.../evaluator/
-│       ├── application/config/     # KafkaConsumerConfig, EvaluatorProperties, MetricsConfig
-│       ├── domain/evaluation/      # EvaluationEngine, SymbolAlertIndex, AlertIndexManager, AlertEntry
+│       ├── application/config/     # KafkaConsumerConfig (concurrency=16/8, batch mode), AsyncConfig, DataSourceConfig, EvaluatorProperties, MetricsConfig
+│       ├── domain/evaluation/      # EvaluationEngine, SymbolAlertIndex (lock-free), AlertIndexManager, AlertEntry
 │       └── infrastructure/
-│           ├── db/                  # AlertStatusUpdater, WarmUpService, AlertWarmUpRepository
-│           └── kafka/              # MarketTickConsumer, AlertChangeConsumer, AlertTriggerProducer, AlertTriggerOutboxHandler
+│           ├── db/                  # AlertStatusUpdater (@Async), WarmUpService (paginated), AlertWarmUpRepository
+│           └── kafka/              # MarketTickConsumer (batch List<MarketTick>), AlertChangeConsumer, AlertTriggerProducer, AlertTriggerOutboxHandler
 │
 ├── notification-persister/         # Notification service
 │   └── src/main/java/.../notifier/
@@ -566,7 +576,7 @@ price-alert-system/
 │   ├── TROUBLESHOOTING.md          # 12 issues with root cause analysis
 │   ├── dataflow.html               # Interactive animated 17-step visualization
 │   └── Price_Alert_System.postman_collection.json  # 14 Postman requests
-├── docker-compose.yml              # Full stack (13 containers)
+├── docker-compose.yml              # Full stack (up to 17 containers: 3 Kafka brokers + 2 evaluator instances)
 ├── Dockerfile                      # Multi-module build (docker profile for JSON logging)
 ├── build.gradle.kts                # Root build config
 └── settings.gradle.kts             # Module declarations
@@ -594,8 +604,8 @@ open docs/dataflow.html
 # Import Postman collection
 # File → Import → docs/Price_Alert_System.postman_collection.json
 
-# Run all 105 unit + integration tests
-./gradlew test
+# Run all 113 unit + integration tests
+./gradlew :alert-api:test :evaluator:test
 
 # Check service status
 ./scripts/launch.sh status
@@ -643,9 +653,44 @@ The Terraform stack provisions the same 13 containers as Docker Compose via the 
 
 ---
 
+## Performance & Scalability
+
+See `docs/PERFORMANCE_AND_SCALABILITY.md` for the full analysis. Summary of what is implemented:
+
+### P1 — Config (no code change)
+| Change | Where | Effect |
+|---|---|---|
+| Kafka consumer concurrency | `KafkaConsumerConfig` | `market-ticks` 16 threads, `alert-changes` 8 threads — one per partition |
+| Custom `@Async` thread pool | `AsyncConfig` | `core=4, max=16, queue=500` — prevents pile-up under trigger bursts |
+| JVM heap + ZGC | `docker-compose.yml` / Terraform | Sub-millisecond GC pauses; per-service heap bounds |
+| HikariCP pool tuning | all `application.yml` | `alert-api max=20`, others `max=10`; total ≤ 80 of PostgreSQL's 100 connections |
+| Tracing sampling | all `application.yml` | `1.0` in dev, `0.01` in `production` profile (100× Tempo storage reduction) |
+
+### P2 — Code changes
+| Change | Where | Effect |
+|---|---|---|
+| Batch Kafka consumer | `MarketTickConsumer` | `List<MarketTick>` per transaction; `setBatchListener(true)` + `AckMode.BATCH` — up to 90% less transaction overhead |
+| Redis rate limiting | `AlertCommandHandler` | `rate:alerts:{userId}` INCR/EXPIRE — 10 creates/min, HTTP 429 on breach |
+| Redis JWT blacklist | `JwtAuthenticationFilter` + `AuthController` | `DELETE /api/v1/auth/logout` writes `blacklist:{jti}` EX remaining TTL |
+| Paginated warm-up | `WarmUpService` | Pages of 10 000 — prevents OOM on millions of alerts at startup |
+
+### P3 — Architecture
+| Change | Where | Effect |
+|---|---|---|
+| Lock-free partition index | `SymbolAlertIndex` | `ReentrantReadWriteLock` removed — safe because symbol keying ensures one thread per symbol |
+| Multiple evaluator instances | `docker-compose.yml` + Terraform | `evaluator` + `evaluator-2` in same consumer group; Kafka assigns disjoint partitions |
+| 3-broker Kafka cluster | `docker-compose.yml` + Terraform | RF=3, min ISR=2, controller quorum across 3 nodes — no single point of failure |
+| PostgreSQL read replica routing | `DataSourceConfig` | `AbstractRoutingDataSource` routes `@Transactional(readOnly=true)` to replica; `postgres-replica` in production profile |
+
+---
+
 ## Commit History
 
 ```
+06cada3 perf: implement P3 improvements + refactor tests to flat class hierarchy
+4ddc94f perf: implement P2 improvements with playbook compliance
+eb1557f perf: implement P1 performance improvements
+29c2f11 feat: add Terraform IaC, evaluation engine docs, and performance plan
 277f579 docs: update OVERVIEW.md to reflect monitoring stack and recent fixes
 b5d8d23 fix: tick-ingestor Kafka config + add troubleshooting guide
 29fed1d feat: add production monitoring with Grafana, Prometheus, Loki, and Tempo
