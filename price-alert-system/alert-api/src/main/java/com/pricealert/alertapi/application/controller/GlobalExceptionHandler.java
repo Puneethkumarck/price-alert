@@ -2,6 +2,7 @@ package com.pricealert.alertapi.application.controller;
 
 import com.pricealert.alertapi.domain.exceptions.AlertNotFoundException;
 import com.pricealert.alertapi.domain.exceptions.AlertNotOwnedException;
+import com.pricealert.alertapi.domain.exceptions.RateLimitExceededException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -27,6 +28,14 @@ public class GlobalExceptionHandler {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Alert not found");
         problem.setTitle("Alert Not Found");
         problem.setProperty("code", ErrorCodes.ALERT_NOT_FOUND);
+        return problem;
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ProblemDetail handleRateLimit(RateLimitExceededException ex) {
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+        problem.setTitle("Too Many Requests");
+        problem.setProperty("code", ErrorCodes.RATE_LIMIT_EXCEEDED);
         return problem;
     }
 

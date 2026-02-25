@@ -4,6 +4,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
@@ -21,6 +22,8 @@ public abstract class BaseIntegrationTest {
 
     static final PostgreSQLContainer<?> postgres;
     static final KafkaContainer kafka;
+    @SuppressWarnings("resource")
+    static final GenericContainer<?> redis;
 
     static {
         postgres = new PostgreSQLContainer<>(DockerImageName.parse("postgres:17-alpine"))
@@ -32,6 +35,10 @@ public abstract class BaseIntegrationTest {
         kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.7.1"))
                 .withKraft();
         kafka.start();
+
+        redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+                .withExposedPorts(6379);
+        redis.start();
     }
 
     @DynamicPropertySource
@@ -40,10 +47,9 @@ public abstract class BaseIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("jwt.secret", () -> JWT_SECRET);
-        registry.add("spring.autoconfigure.exclude",
-                () -> "org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration,"
-                        + "org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration");
         registry.add("alert.daily-reset.cron", () -> "-");
         registry.add("namastack.outbox.poll-interval", () -> "500");
         registry.add("namastack.outbox.batch-size", () -> "50");

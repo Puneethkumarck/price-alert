@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -24,6 +25,7 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtProperties jwtProperties;
+    private final StringRedisTemplate redisTemplate;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -37,8 +39,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         var token = authHeader.substring(7);
         try {
-            var userId = validateAndExtractUserId(token);
-            var auth = new UsernamePasswordAuthenticationToken(userId, null, List.of());
+            var claims = validateAndExtractClaims(token);
+            var jti = claims.jti();
+            if (jti != null && Boolean.TRUE.equals(redisTemplate.hasKey("blacklist:" + jti))) {
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token revoked");
+                return;
+            }
+            var auth = new UsernamePasswordAuthenticationToken(claims.sub(), null, List.of());
             SecurityContextHolder.getContext().setAuthentication(auth);
         } catch (Exception e) {
             log.warn("Invalid JWT token: {}", e.getMessage());
@@ -47,7 +54,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private String validateAndExtractUserId(String token) {
+    public JwtClaims validateAndExtractClaims(String token) {
         var parts = token.split("\\.");
         if (parts.length != 3) {
             throw new IllegalArgumentException("Invalid JWT format");
@@ -60,7 +67,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         var payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-        return extractClaim(payload, "sub");
+        var sub = extractClaim(payload, "sub");
+        var jti = extractOptionalClaim(payload, "jti");
+        var exp = extractOptionalClaim(payload, "exp");
+        return new JwtClaims(sub, jti, exp != null ? Long.parseLong(exp) : null);
     }
 
     private String hmacSha256(String data, String secret) {
@@ -80,7 +90,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (idx < 0) {
             throw new IllegalArgumentException("Missing claim: " + claim);
         }
-        var valueStart = payload.indexOf(':', idx) + 1;
+        return extractValueAt(payload, idx);
+    }
+
+    private String extractOptionalClaim(String payload, String claim) {
+        var key = "\"" + claim + "\"";
+        var idx = payload.indexOf(key);
+        if (idx < 0) {
+            return null;
+        }
+        return extractValueAt(payload, idx);
+    }
+
+    private String extractValueAt(String payload, int keyIdx) {
+        var valueStart = payload.indexOf(':', keyIdx) + 1;
         var trimmed = payload.substring(valueStart).trim();
         if (trimmed.startsWith("\"")) {
             var end = trimmed.indexOf('"', 1);

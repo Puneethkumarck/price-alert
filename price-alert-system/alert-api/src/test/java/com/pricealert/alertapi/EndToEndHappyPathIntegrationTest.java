@@ -25,8 +25,10 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -122,13 +124,9 @@ class EndToEndHappyPathIntegrationTest extends BaseIntegrationTest {
             assertThat(alert.getNote()).isEqualTo("E2E test alert");
 
             // then — CREATED event is on alert-changes topic
-            var allRecords = pollForRecords(kafkaConsumer, 10);
-            assertThat(allRecords.count()).isGreaterThanOrEqualTo(1);
-
-            // find the record for this specific alert (topic may contain events from other tests)
-            var matchingRecord = java.util.stream.StreamSupport.stream(allRecords.spliterator(), false)
-                    .filter(r -> r.value().contains("\"alert_id\":\"" + alert.getId() + "\""))
-                    .findFirst()
+            // Accumulate records across multiple poll attempts — the outbox publishes asynchronously
+            // so the record may not appear in the first batch.
+            var matchingRecord = pollForMatchingRecord(kafkaConsumer, alert.getId(), 20)
                     .orElseThrow(() -> new AssertionError("No Kafka record found for alert " + alert.getId()));
 
             assertThat(matchingRecord.key()).isEqualTo("AAPL");
@@ -426,6 +424,26 @@ class EndToEndHappyPathIntegrationTest extends BaseIntegrationTest {
             }
         }
         return records;
+    }
+
+    /**
+     * Polls across multiple batches accumulating all records until a record matching
+     * the given alertId is found, or maxAttempts is exhausted.
+     */
+    private Optional<org.apache.kafka.clients.consumer.ConsumerRecord<String, String>> pollForMatchingRecord(
+            KafkaConsumer<String, String> consumer, String alertId, int maxAttempts) {
+        var allRecords = new ArrayList<org.apache.kafka.clients.consumer.ConsumerRecord<String, String>>();
+        for (int i = 0; i < maxAttempts; i++) {
+            var batch = consumer.poll(Duration.ofSeconds(1));
+            batch.forEach(allRecords::add);
+            var match = allRecords.stream()
+                    .filter(r -> r.value().contains("\"alert_id\":\"" + alertId + "\""))
+                    .findFirst();
+            if (match.isPresent()) {
+                return match;
+            }
+        }
+        return Optional.empty();
     }
 
     private String extractJsonField(String json, String field) {

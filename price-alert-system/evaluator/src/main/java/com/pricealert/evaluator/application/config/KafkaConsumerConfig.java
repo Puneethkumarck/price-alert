@@ -15,10 +15,6 @@ import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 
 import java.util.HashMap;
 
-/**
- * Separate Kafka consumer factories for market-ticks and alert-changes.
- * Per D4: separate consumers prevent alert-changes being starved by high-volume ticks.
- */
 @Configuration
 public class KafkaConsumerConfig {
 
@@ -27,8 +23,9 @@ public class KafkaConsumerConfig {
             KafkaProperties kafkaProperties) {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, MarketTick>();
         factory.setConsumerFactory(consumerFactory(kafkaProperties, MarketTick.class, "evaluator-ticks"));
-        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
-        factory.setConcurrency(16); // match market-ticks partition count
+        factory.setBatchListener(true);
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.BATCH);
+        factory.setConcurrency(16);
         return factory;
     }
 
@@ -38,7 +35,7 @@ public class KafkaConsumerConfig {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, AlertChange>();
         factory.setConsumerFactory(consumerFactory(kafkaProperties, AlertChange.class, "evaluator-changes"));
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
-        factory.setConcurrency(8); // match alert-changes partition count
+        factory.setConcurrency(8);
         return factory;
     }
 

@@ -11,6 +11,8 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -28,18 +30,20 @@ public class MarketTickConsumer {
             containerFactory = "marketTickListenerContainerFactory"
     )
     @Transactional
-    public void onMarketTick(MarketTick tick) {
-        var triggers = evaluationEngine.evaluate(tick.symbol(), tick.price(), tick.timestamp());
-        ticksProcessedCounter.increment();
+    public void onMarketTicks(List<MarketTick> ticks) {
+        for (var tick : ticks) {
+            var triggers = evaluationEngine.evaluate(tick.symbol(), tick.price(), tick.timestamp());
+            ticksProcessedCounter.increment();
 
-        for (var trigger : triggers) {
-            log.info("Alert {} fired for {} at {} (threshold: {}, direction: {})",
-                    trigger.alertId(), trigger.symbol(), trigger.triggerPrice(),
-                    trigger.thresholdPrice(), trigger.direction());
+            for (var trigger : triggers) {
+                log.info("Alert {} fired for {} at {} (threshold: {}, direction: {})",
+                        trigger.alertId(), trigger.symbol(), trigger.triggerPrice(),
+                        trigger.thresholdPrice(), trigger.direction());
 
-            triggerProducer.send(trigger);
-            statusUpdater.markTriggeredToday(trigger.alertId());
-            alertsTriggeredCounter.increment();
+                triggerProducer.send(trigger);
+                statusUpdater.markTriggeredToday(trigger.alertId());
+                alertsTriggeredCounter.increment();
+            }
         }
     }
 }
