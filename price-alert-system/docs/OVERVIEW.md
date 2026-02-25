@@ -2,52 +2,72 @@
 
 A real-time price alert system for US equities. Users create alerts (e.g., "notify me when AAPL goes above $150"), the system continuously evaluates live market ticks against those alerts, and delivers notifications when thresholds are crossed.
 
+Built with hexagonal architecture, transactional outbox pattern, 4-layer deduplication, and full observability via Grafana/Prometheus/Loki/Tempo.
+
 ---
 
 ## Architecture
 
-6 Spring Boot microservices in a Gradle multi-module project, communicating via Kafka with PostgreSQL for persistence and a transactional outbox for reliable event delivery.
+6 Spring Boot microservices + 7 infrastructure services (13 Docker containers total), communicating via Kafka with PostgreSQL for persistence and a transactional outbox for reliable event delivery.
 
 ```
-                          ┌─────────────┐
-                          │  alert-api  │  ← REST API (CRUD, notifications, JWT auth)
-                          │   :8080     │
-                          └──────┬──────┘
-                                 │ alert-changes (Kafka, via outbox)
-                                 ▼
-┌──────────────┐    ┌─────────────────┐    ┌──────────────────────┐
-│  simulator   │───▶│  tick-ingestor  │───▶│     evaluator        │
-│  :8085 (WS)  │    │  :8081          │    │  :8082               │
-└──────────────┘    └─────────────────┘    │  in-memory TreeMap   │
-                     market-ticks (Kafka)   │  index per symbol    │
-                                           └──────────┬───────────┘
-                                                      │ alert-triggers (Kafka, via outbox)
-                                                      ▼
-                                           ┌──────────────────────┐
-                                           │notification-persister │
-                                           │  :8083               │
-                                           │  4-layer dedup       │
-                                           └──────────────────────┘
+┌──────────┐    ┌───────────────┐    ┌────────────────┐    ┌──────────────────┐
+│   User   │───▶│   alert-api   │───▶│   evaluator    │───▶│ notif-persister  │
+│          │    │   :8080       │    │   :8082        │    │   :8083          │
+└──────────┘    └───────┬───────┘    └───────┬────────┘    └────────┬─────────┘
+                        │                    │                      │
+                   alertapi_            evaluator_              notifications
+                   outbox               outbox                  trigger_log
+                        │                    │                      │
+                        ▼                    ▼                      │
+                  alert-changes        alert-triggers               │
+                   (Kafka)              (Kafka)                     │
+                        ▲                    ▲                      │
+                        │                    │                      │
+┌──────────┐    ┌───────────────┐            │                      │
+│simulator │───▶│ tick-ingestor │────────────┘                      │
+│  :8085   │    │   :8081       │                                   │
+└──────────┘    └───────┬───────┘       ┌───────────────────────────┘
+                   ingestor_            │
+                   outbox               ▼
+                        │          PostgreSQL :5432
+                        ▼          (shared DB, per-service outbox tables)
+                  market-ticks
+                   (Kafka)
+
+
+                    ┌─────────────────────────────────────┐
+                    │         Monitoring Stack             │
+                    │                                     │
+                    │  Prometheus :9090 ◄── scrapes /actuator/prometheus
+                    │  Grafana    :3000 ◄── 3 dashboards + 3 datasources
+                    │  Loki       :3100 ◄── Promtail ships Docker logs
+                    │  Tempo      :3200 ◄── OpenTelemetry OTLP traces
+                    └─────────────────────────────────────┘
 ```
 
-### Services
+### Application Services
 
 | Service | Port | Responsibility |
 |---|---|---|
-| **alert-api** | 8080 | REST CRUD for alerts and notifications. JWT authentication. Daily reset scheduler. Publishes alert lifecycle events via outbox. |
-| **market-feed-simulator** | 8085 | Generates random-walk price ticks for 50 US equities via WebSocket. |
-| **tick-ingestor** | 8081 | Connects to simulator WebSocket, publishes ticks to Kafka via outbox. |
-| **evaluator** | 8082 | Consumes alert-changes (indexes alerts in memory) and market-ticks (evaluates against thresholds). Produces alert-triggers via outbox. |
-| **notification-persister** | 8083 | Consumes alert-triggers, persists notifications and trigger logs with 4-layer idempotent deduplication. |
+| **alert-api** | 8080 | REST CRUD for alerts and notifications. JWT authentication. Daily reset scheduler. Publishes alert lifecycle events via outbox. Custom metrics: `alerts.created/updated/deleted`. |
+| **market-feed-simulator** | 8085 | Generates random-walk price ticks for 50 US equities via WebSocket. Synchronized per-session writes to prevent concurrent WebSocket errors. |
+| **tick-ingestor** | 8081 | Connects to simulator WebSocket, publishes ticks to Kafka via outbox. Tuned for high throughput: 500 records/batch, 200ms poll, 64MB producer buffer. |
+| **evaluator** | 8082 | Consumes alert-changes (indexes alerts in memory) and market-ticks (evaluates against thresholds). Produces alert-triggers via outbox. Custom metrics: `evaluator.ticks.processed/alerts.triggered` + index gauges. |
+| **notification-persister** | 8083 | Consumes alert-triggers, persists notifications and trigger logs with 4-layer idempotent deduplication. Custom metrics: `notifications.persisted/deduplicated`. |
 | **common** | — | Shared module: event DTOs (AlertChange, AlertTrigger, MarketTick), ULID generator, Kafka topic constants, Jackson config. |
 
-### Infrastructure
+### Infrastructure Services
 
-| Component | Version | Purpose |
-|---|---|---|
-| Apache Kafka | 3.9.0 (KRaft) | Event streaming between services |
-| PostgreSQL | 17 | Persistent storage for alerts, notifications, trigger logs, outbox |
-| Redis | 7 | Rate limiting / caching (available, not heavily used in MVP) |
+| Component | Version | Port | Purpose |
+|---|---|---|---|
+| Apache Kafka | 3.9.0 (KRaft) | 9092 | Event streaming (3 topics: market-ticks, alert-changes, alert-triggers) |
+| PostgreSQL | 17 | 5432 | Alerts, notifications, trigger logs, 9 outbox tables, Flyway migrations |
+| Redis | 7 | 6379 | Rate limiting / caching (available for future use) |
+| Prometheus | latest | 9090 | Metrics collection — scrapes all 5 services at `/actuator/prometheus` every 15s |
+| Grafana | latest | 3000 | Dashboards — 3 pre-built dashboards, 3 auto-provisioned datasources (admin/admin) |
+| Loki + Promtail | latest | 3100 | Centralized log aggregation — structured JSON logs from all Docker containers |
+| Tempo | latest | 3200 | Distributed tracing — OpenTelemetry OTLP receiver, linked from Loki log trace IDs |
 
 ---
 
@@ -71,7 +91,8 @@ User ──POST /api/v1/alerts──▶ alert-api
                                   │
                                   ▼
                     AlertChangeOutboxHandler
-                    sends to alert-changes topic
+                    .get(10s) blocking send
+                    to alert-changes topic
 ```
 
 The alert INSERT and outbox record are written in the **same database transaction**. If the DB commits, the event is guaranteed to be published. If it rolls back, neither the alert nor the event exist.
@@ -96,13 +117,16 @@ The evaluator maintains an in-memory index using `TreeMap<BigDecimal, List<Alert
 ```
 simulator ──WebSocket──▶ tick-ingestor
                               │
+                    @Transactional
                     outbox.schedule(tick, "AAPL")
                               │
-                    Outbox poller ──▶ market-ticks topic
+                    Outbox poller (200ms, batch 500)
+                    ──▶ market-ticks topic
                               │
                               ▼
                     evaluator (MarketTickConsumer)
                               │
+                    @Transactional
                     evaluate("AAPL", $184.48)
                               │
                     SymbolAlertIndex.evaluate()
@@ -143,18 +167,18 @@ User ──GET /api/v1/notifications──▶ alert-api
 
 ## Transactional Outbox Pattern
 
-Every event published to Kafka goes through the transactional outbox (namastack-outbox JDBC). This guarantees at-least-once delivery with no lost events.
+Every event published to Kafka goes through the transactional outbox (namastack-outbox 1.0.0 JDBC). This guarantees at-least-once delivery with no lost events.
 
 ### How It Works
 
 1. Domain state change + outbox record written in the **same DB transaction**
 2. Outbox poller (scheduled task) reads pending records and calls the `@OutboxHandler`
-3. Handler publishes to Kafka
-4. Record marked `COMPLETED` on success, retried on failure
+3. Handler publishes to Kafka using blocking `.get(10s)` — failures propagate to outbox retry
+4. Record marked `COMPLETED` on success, retried with exponential backoff on failure
 
 ### Per-Service Isolation
 
-Each service has its own outbox tables to prevent cross-service handler conflicts:
+Each service has its own outbox tables (via JDBC `table-prefix`) to prevent cross-service handler conflicts:
 
 | Service | Table Prefix | Tables |
 |---|---|---|
@@ -170,7 +194,7 @@ All services use exponential backoff:
 |---|---|---|---|---|---|
 | alert-api | 2000ms | 20 | 5 | 1000ms | 60s |
 | evaluator | 1000ms | 50 | 3 | 500ms | 30s |
-| tick-ingestor | 500ms | 100 | 3 | 500ms | 10s |
+| tick-ingestor | 200ms | 500 | 3 | 500ms | 10s |
 
 ---
 
@@ -199,17 +223,18 @@ Each service follows the hexagonal (ports & adapters) pattern with 3 layers:
 │ Handlers     │    │ Port IFs    │    │ Kafka Adapters │
 │ Jobs/Config  │    │ Records     │    │ JPA Entities   │
 │ Security     │    │ Exceptions  │    │ MapStruct Maps │
+│ Metrics      │    │             │    │ Outbox Handlers│
 └──────────────┘    └─────────────┘    └────────────────┘
                           │
                     ZERO outward
                     dependencies
 ```
 
-### Layer Rules (enforced by ArchUnit)
+### Layer Rules (enforced by ArchUnit 1.3.2)
 
 | Layer | May Depend On | Must Not Depend On |
 |---|---|---|
-| **Domain** | Nothing (except `@Component`/`@Service` for DI) | Application, Infrastructure, Spring Data, JPA, Kafka |
+| **Domain** | Nothing (except `@Component`/`@Service` for DI) | Application, Infrastructure, Spring Data, JPA, Kafka, `@Transactional` |
 | **Application** | Domain, Infrastructure | — |
 | **Infrastructure** | Domain, Application | — |
 
@@ -225,13 +250,50 @@ Each service follows the hexagonal (ports & adapters) pattern with 3 layers:
 
 ---
 
+## Monitoring & Observability
+
+Accessible at **http://localhost:3000** (Grafana, admin/admin).
+
+### Grafana Dashboards
+
+| Dashboard | Panels |
+|---|---|
+| **Business Metrics** | Alerts created/updated/deleted rates, evaluator tick throughput, trigger rate, index symbol/alert gauges, notification throughput, dedup rate |
+| **JVM Overview** | Heap memory, GC pause time, thread count, CPU usage, HTTP request rate by endpoint, P95 latency, 5xx error rate |
+| **Service Logs** | Per-service error log viewer (alert-api, evaluator, tick-ingestor, notification-persister, simulator) with level filter (ERROR/WARN/INFO/DEBUG), free-text search, error rate chart, log volume by level |
+
+### Custom Business Metrics
+
+| Metric | Service | Type |
+|---|---|---|
+| `alerts.created` | alert-api | Counter |
+| `alerts.updated` | alert-api | Counter |
+| `alerts.deleted` | alert-api | Counter |
+| `evaluator.ticks.processed` | evaluator | Counter |
+| `evaluator.alerts.triggered` | evaluator | Counter |
+| `evaluator.index.symbols` | evaluator | Gauge |
+| `evaluator.index.alerts` | evaluator | Gauge |
+| `notifications.persisted` | notification-persister | Counter |
+| `notifications.deduplicated` | notification-persister | Counter |
+
+### Observability Stack
+
+| Component | Purpose |
+|---|---|
+| **Prometheus** | Scrapes `/actuator/prometheus` from all 5 services every 15s. Application label from `spring.application.name`. |
+| **Loki + Promtail** | Promtail discovers Docker containers, ships structured JSON logs (logback `docker` profile) to Loki with `service` label. |
+| **Tempo** | Receives OTLP traces via HTTP (port 4318). Micrometer tracing bridge with 100% sampling in dev. |
+| **Grafana** | Auto-provisions 3 datasources + 3 dashboards on startup. Loki→Tempo trace ID linking for log-to-trace navigation. |
+
+---
+
 ## Kafka Topics
 
 | Topic | Partitions | Retention | Key | Producer | Consumer |
 |---|---|---|---|---|---|
-| `market-ticks` | 16 | 4 hours | symbol | tick-ingestor | evaluator |
-| `alert-changes` | 8 | 24 hours | symbol | alert-api | evaluator |
-| `alert-triggers` | 8 | 7 days | userId | evaluator | notification-persister |
+| `market-ticks` | 16 | 4 hours | symbol | tick-ingestor (outbox) | evaluator |
+| `alert-changes` | 8 | 24 hours | symbol | alert-api (outbox) | evaluator |
+| `alert-triggers` | 8 | 7 days | userId | evaluator (outbox) | notification-persister |
 
 ---
 
@@ -244,7 +306,7 @@ Each service follows the hexagonal (ports & adapters) pattern with 3 layers:
 | V1 | `alerts` table + indexes (userId, symbol+status) |
 | V2 | `alert_trigger_log` table + dedup unique index (alert_id, trading_date) |
 | V3 | `notifications` table + idempotency_key unique constraint + indexes |
-| V4 | 9 outbox tables (3 per service: record, instance, partition) |
+| V4 | 9 outbox tables (3 per service: record, instance, partition) with indexes |
 
 ### Entity Relationship
 
@@ -256,13 +318,17 @@ alerts (1) ───────────── (N) alert_trigger_log
   └──────────────────── (N) notifications
                                │
                      idempotency_key (unique) = alertId:tradingDate
+
+alertapi_outbox_record          (alert-api outbox events)
+evaluator_outbox_record         (evaluator outbox events)
+ingestor_outbox_record          (tick-ingestor outbox events)
 ```
 
 ---
 
 ## REST API
 
-All endpoints require JWT authentication (`Authorization: Bearer <token>`).
+All endpoints require JWT authentication (`Authorization: Bearer <token>`) and have `@PreAuthorize("isAuthenticated()")`.
 
 ### Alerts
 
@@ -352,10 +418,10 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`).
 ## Security
 
 - **JWT authentication** — HMAC-SHA256 signed tokens, validated by `JwtAuthenticationFilter`
-- **Method-level security** — `@PreAuthorize("isAuthenticated()")` on every controller endpoint
+- **Method-level security** — `@EnableMethodSecurity` + `@PreAuthorize("isAuthenticated()")` on every endpoint
 - **Ownership enforcement** — `AlertService` verifies `alert.userId == requestor` on get/update/delete
-- **5xx error sanitization** — `GlobalExceptionHandler` never leaks internal details
-- **@Validated config** — All `@ConfigurationProperties` have bean validation constraints; invalid config fails at startup
+- **5xx error sanitization** — `GlobalExceptionHandler` returns "Internal server error", never leaks internals
+- **@Validated config** — All `@ConfigurationProperties` have `@Validated` + bean validation constraints (`@NotBlank`, `@Min`); invalid config fails at startup
 
 ---
 
@@ -373,6 +439,11 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`).
 | MapStruct | 1.6.3 |
 | ArchUnit | 1.3.2 |
 | namastack-outbox | 1.0.0 (JDBC starter) |
+| Micrometer | Prometheus registry + OpenTelemetry tracing bridge |
+| Grafana | latest |
+| Prometheus | latest |
+| Loki + Promtail | latest |
+| Tempo | latest |
 | Testcontainers | 1.21.3 |
 | Jackson | 3.x (via Spring Boot 4) |
 | Flyway | 11.x |
@@ -385,14 +456,14 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`).
 |---|---|---|
 | Unit (evaluator) | 44 | SymbolAlertIndex (28), EvaluationEngine (8), AlertIndexManager (8) |
 | Unit (alert-api) | 8 | AlertService CRUD with BDDMockito |
-| Architecture | 3 | Hexagonal layer dependencies via ArchUnit |
+| Architecture | 3 | Hexagonal layer dependencies via ArchUnit 1.3.2 |
 | Integration (CRUD) | 25 | REST endpoints, auth, validation, pagination, ownership |
 | Integration (E2E) | 8 | Alert create → Kafka event → status lifecycle → notifications |
 | Integration (dedup) | 13 | All 4 dedup layers (conditional update, idempotency key, trigger log) |
 | Integration (scheduler) | 4 | Daily reset TRIGGERED_TODAY → ACTIVE, advisory lock, multi-user |
 | **Total** | **105** | |
 
-Integration tests use Testcontainers (PostgreSQL 17 + Kafka KRaft 7.7.1) with singleton containers shared across all test classes.
+Integration tests use Testcontainers (PostgreSQL 17 + Kafka KRaft 7.7.1) with singleton containers shared across all test classes. Outbox configured with `alertapi_` table prefix and 500ms poll interval in tests.
 
 ---
 
@@ -412,6 +483,7 @@ price-alert-system/
 │       ├── application/
 │       │   ├── controller/         # AlertController, NotificationController, GlobalExceptionHandler
 │       │   ├── service/            # AlertCommandHandler (@Transactional orchestrator)
+│       │   ├── config/             # MetricsConfig (alerts.created/updated/deleted counters)
 │       │   ├── security/           # JwtAuthenticationFilter, SecurityConfig, JwtProperties
 │       │   └── job/                # DailyResetScheduler
 │       ├── domain/
@@ -425,7 +497,7 @@ price-alert-system/
 │
 ├── evaluator/                      # Evaluation service
 │   └── src/main/java/.../evaluator/
-│       ├── application/config/     # KafkaConsumerConfig, EvaluatorProperties
+│       ├── application/config/     # KafkaConsumerConfig, EvaluatorProperties, MetricsConfig
 │       ├── domain/evaluation/      # EvaluationEngine, SymbolAlertIndex, AlertIndexManager, AlertEntry
 │       └── infrastructure/
 │           ├── db/                  # AlertStatusUpdater, WarmUpService, AlertWarmUpRepository
@@ -433,7 +505,7 @@ price-alert-system/
 │
 ├── notification-persister/         # Notification service
 │   └── src/main/java/.../notifier/
-│       ├── application/config/     # KafkaConsumerConfig
+│       ├── application/config/     # KafkaConsumerConfig, MetricsConfig
 │       ├── domain/persistence/     # NotificationPersistenceService, NotificationPort, AlertTriggerLogPort
 │       └── infrastructure/
 │           ├── db/                  # JPA entities, repositories, adapters
@@ -448,18 +520,34 @@ price-alert-system/
 │
 ├── market-feed-simulator/          # Price tick generator
 │   └── src/main/java/.../simulator/
-│       ├── application/            # WebSocketConfig, SimulatorProperties
+│       ├── application/            # WebSocketConfig, SimulatorProperties, SimulatorWebSocketHandler
 │       ├── domain/                 # SymbolRegistry
 │       └── infrastructure/         # TickGenerator, HeartbeatScheduler
 │
+├── monitoring/                     # Observability stack configs
+│   ├── prometheus.yml              # Scrape config for all 5 services
+│   ├── loki.yml                    # Loki local storage config
+│   ├── promtail.yml                # Docker log discovery → Loki
+│   ├── tempo.yml                   # OTLP receiver config
+│   └── grafana/
+│       ├── provisioning/
+│       │   ├── datasources/        # Prometheus + Loki + Tempo auto-provisioned
+│       │   └── dashboards/         # Dashboard file discovery
+│       └── dashboards/
+│           ├── business-metrics.json
+│           ├── jvm-overview.json
+│           └── service-logs.json
+│
 ├── scripts/
-│   └── launch.sh                   # Build, start, test, stop
+│   └── launch.sh                   # Build, start, test, stop (single entry point)
 ├── docs/
 │   ├── OVERVIEW.md                 # This file
-│   ├── TESTING.md                  # Testing guide
-│   └── dataflow.html               # Interactive animated visualization
-├── docker-compose.yml              # Full stack (8 containers)
-├── Dockerfile                      # Multi-module build
+│   ├── TESTING.md                  # Complete testing guide
+│   ├── TROUBLESHOOTING.md          # 12 issues with root cause analysis
+│   ├── dataflow.html               # Interactive animated 17-step visualization
+│   └── Price_Alert_System.postman_collection.json  # 14 Postman requests
+├── docker-compose.yml              # Full stack (13 containers)
+├── Dockerfile                      # Multi-module build (docker profile for JSON logging)
 ├── build.gradle.kts                # Root build config
 └── settings.gradle.kts             # Module declarations
 ```
@@ -469,20 +557,35 @@ price-alert-system/
 ## Quick Start
 
 ```bash
-# Build and start the full stack
-./scripts/launch.sh up
+# Build and start the full stack (13 containers)
+./scripts/launch.sh up --skip-tests
 
 # Run E2E happy path test (8 steps)
 ./scripts/launch.sh test
 
+# Open monitoring
+open http://localhost:3000            # Grafana (admin/admin)
+
 # View interactive data flow animation
 open docs/dataflow.html
+
+# Import Postman collection
+# File → Import → docs/Price_Alert_System.postman_collection.json
 
 # Run all 105 unit + integration tests
 ./gradlew test
 
+# Check service status
+./scripts/launch.sh status
+
+# Tail all logs
+./scripts/launch.sh logs
+
 # Stop everything
 ./scripts/launch.sh down
+
+# Stop + wipe all data
+./scripts/launch.sh clean
 ```
 
 ---
@@ -490,6 +593,9 @@ open docs/dataflow.html
 ## Commit History
 
 ```
+b5d8d23 fix: tick-ingestor Kafka config + add troubleshooting guide
+29fed1d feat: add production monitoring with Grafana, Prometheus, Loki, and Tempo
+3cc1237 fix: WebSocket concurrency, Kafka producer tuning, and outbox handlers
 b5b6c8a feat: add launch script and comprehensive testing guide
 643d3a7 fix: redesign dataflow visualization and fix particle radius bug
 dce4304 docs: add interactive happy path data flow visualization
