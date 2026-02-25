@@ -6,26 +6,32 @@ resource "docker_image" "kafka" {
   name = "apache/kafka:${var.kafka_image_tag}"
 }
 
-resource "docker_container" "kafka" {
-  name  = "kafka"
-  image = docker_image.kafka.image_id
-
-  env = [
-    "KAFKA_NODE_ID=1",
+locals {
+  kafka_quorum_voters = "1@kafka:9093,2@kafka-2:9093,3@kafka-3:9093"
+  kafka_common_env = [
     "KAFKA_PROCESS_ROLES=broker,controller",
-    "KAFKA_LISTENERS=INTERNAL://:19092,EXTERNAL://:9092,CONTROLLER://:9093",
-    "KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka:19092,EXTERNAL://localhost:9092",
-    "KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093",
     "KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER",
     "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT",
     "KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL",
-    "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
-    "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1",
-    "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1",
+    "KAFKA_CONTROLLER_QUORUM_VOTERS=${local.kafka_quorum_voters}",
+    "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=3",
+    "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=3",
+    "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=2",
     "KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0",
     "KAFKA_LOG_RETENTION_HOURS=24",
     "KAFKA_AUTO_CREATE_TOPICS_ENABLE=false",
   ]
+}
+
+resource "docker_container" "kafka" {
+  name  = "kafka"
+  image = docker_image.kafka.image_id
+
+  env = concat(local.kafka_common_env, [
+    "KAFKA_NODE_ID=1",
+    "KAFKA_LISTENERS=INTERNAL://:19092,EXTERNAL://:9092,CONTROLLER://:9093",
+    "KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka:19092,EXTERNAL://localhost:9092",
+  ])
 
   ports {
     internal = 9092
@@ -34,6 +40,66 @@ resource "docker_container" "kafka" {
 
   healthcheck {
     test         = ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+    interval     = "10s"
+    timeout      = "10s"
+    retries      = 10
+    start_period = "30s"
+  }
+
+  networks_advanced {
+    name = var.network_id
+  }
+
+  restart = "unless-stopped"
+}
+
+resource "docker_container" "kafka_2" {
+  name  = "kafka-2"
+  image = docker_image.kafka.image_id
+
+  env = concat(local.kafka_common_env, [
+    "KAFKA_NODE_ID=2",
+    "KAFKA_LISTENERS=INTERNAL://:19092,EXTERNAL://:9093,CONTROLLER://:9093",
+    "KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka-2:19092,EXTERNAL://localhost:9093",
+  ])
+
+  ports {
+    internal = 9093
+    external = 9093
+  }
+
+  healthcheck {
+    test         = ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9093 > /dev/null 2>&1"]
+    interval     = "10s"
+    timeout      = "10s"
+    retries      = 10
+    start_period = "30s"
+  }
+
+  networks_advanced {
+    name = var.network_id
+  }
+
+  restart = "unless-stopped"
+}
+
+resource "docker_container" "kafka_3" {
+  name  = "kafka-3"
+  image = docker_image.kafka.image_id
+
+  env = concat(local.kafka_common_env, [
+    "KAFKA_NODE_ID=3",
+    "KAFKA_LISTENERS=INTERNAL://:19092,EXTERNAL://:9094,CONTROLLER://:9093",
+    "KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka-3:19092,EXTERNAL://localhost:9094",
+  ])
+
+  ports {
+    internal = 9094
+    external = 9094
+  }
+
+  healthcheck {
+    test         = ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9094 > /dev/null 2>&1"]
     interval     = "10s"
     timeout      = "10s"
     retries      = 10
@@ -63,32 +129,35 @@ resource "docker_container" "kafka_init" {
   entrypoint = ["/bin/sh", "-c"]
 
   command = [<<-EOT
-    echo "[kafka-init] Waiting for Kafka broker at kafka:19092..."
-    until /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:19092 > /dev/null 2>&1; do
-      echo "[kafka-init] Not ready, retrying in 5s..."
-      sleep 5
+    echo "[kafka-init] Waiting for all 3 Kafka brokers..."
+    for broker in kafka:19092 kafka-2:19092 kafka-3:19092; do
+      until /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server $broker > /dev/null 2>&1; do
+        echo "[kafka-init] $broker not ready, retrying in 5s..."
+        sleep 5
+      done
+      echo "[kafka-init] $broker is ready"
     done
-    echo "[kafka-init] Kafka is ready. Creating topics..."
+    echo "[kafka-init] All brokers ready. Creating topics..."
 
     /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 \
       --create --if-not-exists \
       --topic market-ticks \
       --partitions 16 \
-      --replication-factor 1 \
+      --replication-factor 3 \
       --config retention.ms=14400000
 
     /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 \
       --create --if-not-exists \
       --topic alert-changes \
       --partitions 8 \
-      --replication-factor 1 \
+      --replication-factor 3 \
       --config retention.ms=86400000
 
     /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 \
       --create --if-not-exists \
       --topic alert-triggers \
       --partitions 8 \
-      --replication-factor 1 \
+      --replication-factor 3 \
       --config retention.ms=604800000
 
     echo "[kafka-init] Topics created:"
@@ -100,7 +169,11 @@ resource "docker_container" "kafka_init" {
     name = var.network_id
   }
 
-  depends_on = [docker_container.kafka]
+  depends_on = [
+    docker_container.kafka,
+    docker_container.kafka_2,
+    docker_container.kafka_3,
+  ]
 }
 
 # ---------------------------------------------------------------------------

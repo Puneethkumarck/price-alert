@@ -19,7 +19,7 @@ spring:
       ddl-auto: validate
     open-in-view: false
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: localhost:9092,localhost:9093,localhost:9094
     consumer:
       group-id: notification-persister-group
       auto-offset-reset: earliest

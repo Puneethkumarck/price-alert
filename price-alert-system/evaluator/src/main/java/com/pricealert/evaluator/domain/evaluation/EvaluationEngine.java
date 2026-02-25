@@ -13,10 +13,6 @@ import java.time.ZoneId;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Core evaluation logic: given a symbol + new price, determines which alerts fire
- * and produces AlertTrigger events.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -26,11 +22,6 @@ public class EvaluationEngine {
 
     private final AlertIndexManager indexManager;
 
-    /**
-     * Evaluate a price tick against all alerts for the given symbol.
-     *
-     * @return list of AlertTrigger events for fired alerts (empty if none fire)
-     */
     public List<AlertTrigger> evaluate(String symbol, BigDecimal newPrice, Instant tickTimestamp) {
         var index = indexManager.get(symbol);
         if (index == null) {

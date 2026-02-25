@@ -5,21 +5,31 @@ spring:
   application:
     name: evaluator
   datasource:
-    url: jdbc:postgresql://localhost:5432/price_alerts
-    username: alerts
-    password: alerts_local
     hikari:
+      jdbc-url: jdbc:postgresql://localhost:5432/price_alerts
+      username: alerts
+      password: alerts_local
       maximum-pool-size: 10
       minimum-idle: 2
       connection-timeout: 3000
       idle-timeout: 300000
       max-lifetime: 1200000
+      pool-name: primary-pool
+    replica:
+      hikari:
+        jdbc-url: jdbc:postgresql://localhost:5432/price_alerts
+        username: alerts
+        password: alerts_local
+        maximum-pool-size: 5
+        minimum-idle: 1
+        connection-timeout: 3000
+        pool-name: replica-pool
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: localhost:9092,localhost:9093,localhost:9094
     consumer:
       group-id: evaluator-group
       auto-offset-reset: earliest
@@ -74,6 +84,10 @@ spring:
   config:
     activate:
       on-profile: production
+  datasource:
+    replica:
+      hikari:
+        jdbc-url: jdbc:postgresql://postgres-replica:5432/price_alerts
 management:
   tracing:
     sampling:

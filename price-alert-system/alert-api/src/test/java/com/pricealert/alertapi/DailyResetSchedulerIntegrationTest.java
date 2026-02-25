@@ -5,8 +5,6 @@ import com.pricealert.alertapi.infrastructure.db.alert.AlertEntity;
 import com.pricealert.alertapi.infrastructure.db.alert.AlertJpaRepository;
 import com.pricealert.common.event.AlertStatus;
 import com.pricealert.common.event.Direction;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -23,85 +21,62 @@ class DailyResetSchedulerIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private AlertJpaRepository alertJpaRepository;
 
-    @BeforeEach
-    void setUp() {
-        alertJpaRepository.deleteAll();
+    @Test
+    void shouldResetTriggeredTodayAlertsToActive() {
+        var triggered1 = createAlertEntity("AAPL", "user1", AlertStatus.TRIGGERED_TODAY);
+        var triggered2 = createAlertEntity("TSLA", "user1", AlertStatus.TRIGGERED_TODAY);
+        var active = createAlertEntity("GOOG", "user1", AlertStatus.ACTIVE);
+        var deleted = createAlertEntity("MSFT", "user1", AlertStatus.DELETED);
+
+        dailyResetScheduler.resetTriggeredAlerts();
+
+        assertThat(alertJpaRepository.findById(triggered1.getId()).orElseThrow().getStatus())
+                .isEqualTo(AlertStatus.ACTIVE);
+        assertThat(alertJpaRepository.findById(triggered2.getId()).orElseThrow().getStatus())
+                .isEqualTo(AlertStatus.ACTIVE);
+        assertThat(alertJpaRepository.findById(active.getId()).orElseThrow().getStatus())
+                .isEqualTo(AlertStatus.ACTIVE);
+        assertThat(alertJpaRepository.findById(deleted.getId()).orElseThrow().getStatus())
+                .isEqualTo(AlertStatus.DELETED);
     }
 
-    @Nested
-    class ResetTriggeredAlerts {
+    @Test
+    void shouldBeNoOpWhenNoTriggeredAlerts() {
+        var active = createAlertEntity("AAPL", "user1", AlertStatus.ACTIVE);
 
-        @Test
-        void shouldResetTriggeredTodayAlertsToActive() {
-            // given
-            var triggered1 = createAlertEntity("AAPL", "user1", AlertStatus.TRIGGERED_TODAY);
-            var triggered2 = createAlertEntity("TSLA", "user1", AlertStatus.TRIGGERED_TODAY);
-            var active = createAlertEntity("GOOG", "user1", AlertStatus.ACTIVE);
-            var deleted = createAlertEntity("MSFT", "user1", AlertStatus.DELETED);
+        dailyResetScheduler.resetTriggeredAlerts();
 
-            // when
-            dailyResetScheduler.resetTriggeredAlerts();
+        assertThat(alertJpaRepository.findById(active.getId()).orElseThrow().getStatus())
+                .isEqualTo(AlertStatus.ACTIVE);
+    }
 
-            // then — TRIGGERED_TODAY → ACTIVE
-            assertThat(alertJpaRepository.findById(triggered1.getId()).orElseThrow().getStatus())
-                    .isEqualTo(AlertStatus.ACTIVE);
-            assertThat(alertJpaRepository.findById(triggered2.getId()).orElseThrow().getStatus())
-                    .isEqualTo(AlertStatus.ACTIVE);
+    @Test
+    void shouldResetAlertsFromMultipleUsers() {
+        var user1Alert = createAlertEntity("AAPL", "user1", AlertStatus.TRIGGERED_TODAY);
+        var user2Alert = createAlertEntity("TSLA", "user2", AlertStatus.TRIGGERED_TODAY);
 
-            // unchanged
-            assertThat(alertJpaRepository.findById(active.getId()).orElseThrow().getStatus())
-                    .isEqualTo(AlertStatus.ACTIVE);
-            assertThat(alertJpaRepository.findById(deleted.getId()).orElseThrow().getStatus())
-                    .isEqualTo(AlertStatus.DELETED);
-        }
+        dailyResetScheduler.resetTriggeredAlerts();
 
-        @Test
-        void shouldBeNoOpWhenNoTriggeredAlerts() {
-            // given
-            var active = createAlertEntity("AAPL", "user1", AlertStatus.ACTIVE);
+        assertThat(alertJpaRepository.findById(user1Alert.getId()).orElseThrow().getStatus())
+                .isEqualTo(AlertStatus.ACTIVE);
+        assertThat(alertJpaRepository.findById(user2Alert.getId()).orElseThrow().getStatus())
+                .isEqualTo(AlertStatus.ACTIVE);
+    }
 
-            // when
-            dailyResetScheduler.resetTriggeredAlerts();
+    @Test
+    void shouldBeIdempotentWhenRunTwice() {
+        var triggered = createAlertEntity("AAPL", "user1", AlertStatus.TRIGGERED_TODAY);
 
-            // then — unchanged
-            assertThat(alertJpaRepository.findById(active.getId()).orElseThrow().getStatus())
-                    .isEqualTo(AlertStatus.ACTIVE);
-        }
+        dailyResetScheduler.resetTriggeredAlerts();
+        dailyResetScheduler.resetTriggeredAlerts();
 
-        @Test
-        void shouldResetAlertsFromMultipleUsers() {
-            // given
-            var user1Alert = createAlertEntity("AAPL", "user1", AlertStatus.TRIGGERED_TODAY);
-            var user2Alert = createAlertEntity("TSLA", "user2", AlertStatus.TRIGGERED_TODAY);
-
-            // when
-            dailyResetScheduler.resetTriggeredAlerts();
-
-            // then
-            assertThat(alertJpaRepository.findById(user1Alert.getId()).orElseThrow().getStatus())
-                    .isEqualTo(AlertStatus.ACTIVE);
-            assertThat(alertJpaRepository.findById(user2Alert.getId()).orElseThrow().getStatus())
-                    .isEqualTo(AlertStatus.ACTIVE);
-        }
-
-        @Test
-        void shouldBeIdempotentWhenRunTwice() {
-            // given
-            var triggered = createAlertEntity("AAPL", "user1", AlertStatus.TRIGGERED_TODAY);
-
-            // when — run twice
-            dailyResetScheduler.resetTriggeredAlerts();
-            dailyResetScheduler.resetTriggeredAlerts();
-
-            // then — still ACTIVE, no error
-            assertThat(alertJpaRepository.findById(triggered.getId()).orElseThrow().getStatus())
-                    .isEqualTo(AlertStatus.ACTIVE);
-        }
+        assertThat(alertJpaRepository.findById(triggered.getId()).orElseThrow().getStatus())
+                .isEqualTo(AlertStatus.ACTIVE);
     }
 
     private AlertEntity createAlertEntity(String symbol, String userId, AlertStatus status) {
         var now = Instant.now();
-        var entity = AlertEntity.builder()
+        return alertJpaRepository.save(AlertEntity.builder()
                 .id("alt_" + System.nanoTime())
                 .userId(userId)
                 .symbol(symbol)
@@ -111,7 +86,6 @@ class DailyResetSchedulerIntegrationTest extends BaseIntegrationTest {
                 .note("Test alert")
                 .createdAt(now)
                 .updatedAt(now)
-                .build();
-        return alertJpaRepository.save(entity);
+                .build());
     }
 }

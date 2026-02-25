@@ -5,15 +5,25 @@ spring:
   application:
     name: alert-api
   datasource:
-    url: jdbc:postgresql://localhost:5432/price_alerts
-    username: alerts
-    password: alerts_local
     hikari:
+      jdbc-url: jdbc:postgresql://localhost:5432/price_alerts
+      username: alerts
+      password: alerts_local
       maximum-pool-size: 20
       minimum-idle: 5
       connection-timeout: 3000
       idle-timeout: 300000
       max-lifetime: 1200000
+      pool-name: primary-pool
+    replica:
+      hikari:
+        jdbc-url: jdbc:postgresql://localhost:5432/price_alerts
+        username: alerts
+        password: alerts_local
+        maximum-pool-size: 10
+        minimum-idle: 2
+        connection-timeout: 3000
+        pool-name: replica-pool
   jpa:
     hibernate:
       ddl-auto: validate
@@ -21,7 +31,7 @@ spring:
   flyway:
     enabled: true
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: localhost:9092,localhost:9093,localhost:9094
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
@@ -75,6 +85,10 @@ spring:
   config:
     activate:
       on-profile: production
+  datasource:
+    replica:
+      hikari:
+        jdbc-url: jdbc:postgresql://postgres-replica:5432/price_alerts
 management:
   tracing:
     sampling:

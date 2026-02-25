@@ -4,10 +4,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Manages per-symbol alert indices.
- * Thread-safe via ConcurrentHashMap + per-symbol SymbolAlertIndex locking.
- */
 @Component
 public class AlertIndexManager {
 

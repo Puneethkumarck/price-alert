@@ -1,6 +1,6 @@
 output "kafka_bootstrap_internal" {
-  description = "Kafka bootstrap address for container-to-container communication"
-  value       = "kafka:19092"
+  description = "Kafka bootstrap addresses for container-to-container communication (all 3 brokers)"
+  value       = "kafka:19092,kafka-2:19092,kafka-3:19092"
 }
 
 output "postgres_host" {

@@ -9,10 +9,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
-/**
- * Kafka consumer for alert-changes topic.
- * Handles CREATED, UPDATED, DELETED, RESET events to maintain in-memory index.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -36,7 +32,6 @@ public class AlertChangeConsumer {
 
     private void handleCreated(AlertChange change) {
         log.debug("Adding alert {} for {} to index", change.alertId(), change.symbol());
-        // Remove first to be idempotent (warm-up may have already loaded this alert)
         indexManager.removeAlert(change.alertId(), change.symbol());
         indexManager.addAlert(toEntry(change));
     }
@@ -54,7 +49,6 @@ public class AlertChangeConsumer {
 
     private void handleReset(AlertChange change) {
         log.debug("Re-adding alert {} for {} to index (daily reset)", change.alertId(), change.symbol());
-        // Remove first to be idempotent
         indexManager.removeAlert(change.alertId(), change.symbol());
         indexManager.addAlert(toEntry(change));
     }

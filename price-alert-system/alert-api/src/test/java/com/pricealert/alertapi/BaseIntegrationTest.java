@@ -1,5 +1,10 @@
 package com.pricealert.alertapi;
 
+import com.pricealert.alertapi.infrastructure.db.alert.AlertJpaRepository;
+import com.pricealert.alertapi.infrastructure.db.notification.NotificationJpaRepository;
+import com.pricealert.alertapi.infrastructure.db.triggerlog.AlertTriggerLogJpaRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -9,19 +14,14 @@ import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
-/**
- * Base class for integration tests using singleton Testcontainers (shared across all test classes).
- * Containers start once on first use and stay alive for the entire JVM lifecycle,
- * avoiding the issue where Spring context caches a datasource URL that becomes stale.
- */
 @SpringBootTest
 @AutoConfigureMockMvc
 public abstract class BaseIntegrationTest {
 
-    static final String JWT_SECRET = "test-secret-key-for-integration-tests";
+    protected static final String JWT_SECRET = "test-secret-key-for-integration-tests";
 
-    static final PostgreSQLContainer<?> postgres;
-    static final KafkaContainer kafka;
+    protected static final PostgreSQLContainer<?> postgres;
+    protected static final KafkaContainer kafka;
     @SuppressWarnings("resource")
     static final GenericContainer<?> redis;
 
@@ -41,11 +41,30 @@ public abstract class BaseIntegrationTest {
         redis.start();
     }
 
+    @Autowired
+    private AlertTriggerLogJpaRepository triggerLogJpaRepository;
+
+    @Autowired
+    private NotificationJpaRepository notificationJpaRepository;
+
+    @Autowired
+    private AlertJpaRepository alertJpaRepository;
+
+    @BeforeEach
+    void cleanDatabase() {
+        triggerLogJpaRepository.deleteAll();
+        notificationJpaRepository.deleteAll();
+        alertJpaRepository.deleteAll();
+    }
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("spring.datasource.hikari.jdbc-url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.hikari.username", postgres::getUsername);
+        registry.add("spring.datasource.hikari.password", postgres::getPassword);
+        registry.add("spring.datasource.replica.hikari.jdbc-url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.replica.hikari.username", postgres::getUsername);
+        registry.add("spring.datasource.replica.hikari.password", postgres::getPassword);
         registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
