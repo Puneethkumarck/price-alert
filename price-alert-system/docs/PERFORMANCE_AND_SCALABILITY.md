@@ -1,219 +1,141 @@
-# Performance & Scalability Plan
+# Performance & Scalability
 
-## 1. Should You Use Redis in the Evaluation Engine?
+All P1, P2, and P3 improvements from the original plan are implemented. This document describes what was done, why, and where to find it.
 
-**No. Redis would make the evaluator slower.**
+---
 
-The evaluation engine uses an in-process `TreeMap` per symbol. When a market tick arrives the lookup
-is a single in-memory operation:
+## 1. Why Not Redis for the Evaluation Engine?
+
+The evaluation engine uses an in-process `TreeMap` per symbol. When a market tick arrives the lookup is a single in-memory operation:
 
 ```
 TreeMap.headMap($184.48)  →  result in ~1 µs   (in-process memory)
 Redis ZRANGEBYSCORE       →  result in ~500 µs  (serialise + TCP round-trip + deserialise)
 ```
 
-At 500 ticks/second that TCP overhead adds **250 ms of extra latency per second** — a bottleneck,
-not an improvement. Redis only wins when the alternative is a slow DB query. Here the alternative
-is a local memory read, which no network-attached store can beat.
+At 500 ticks/second that TCP overhead adds **250 ms of extra latency per second** — a bottleneck, not an improvement. Redis only wins when the alternative is a slow DB query. Here the alternative is a local memory read, which no network-attached store can beat.
 
-### Where Redis *does* add real value in this system
+### Where Redis adds real value
 
-Redis is already running and wired into `alert-api` (dependency declared, host configured), but
-currently unused. Two features justify it:
+Redis is wired into `alert-api` via `spring-boot-starter-data-redis`. Two features use it:
 
-| Feature | Why Redis | Implementation sketch |
+| Feature | Mechanism | File |
 |---|---|---|
-| **Per-user rate limiting** on `POST /api/v1/alerts` | Shared expiring counter across API replicas | `INCR rate:alerts:{userId}` + `EXPIRE 60` |
-| **JWT token revocation / blacklist** | Tokens are currently irrevocable until expiry | `SET blacklist:{jti} 1 EX {ttl}` checked in `JwtAuthenticationFilter` |
+| Per-user rate limiting on `POST /api/v1/alerts` | `INCR rate:alerts:{userId}` + `EXPIRE 60` — 10 creates/min, HTTP 429 on breach | `AlertCommandHandler` |
+| JWT token revocation | `SET blacklist:{jti} 1 EX {ttl}` checked on every authenticated request | `JwtAuthenticationFilter`, `AuthController` |
 
-These are implemented in `alert-api` only and have zero effect on evaluator throughput.
+Both are in `alert-api` only and have zero effect on evaluator throughput.
 
 ---
 
-## 2. Current Performance Baseline
-
-### Theoretical throughput
+## 2. Theoretical Throughput
 
 | Stage | Rate | Config driver |
 |---|---|---|
 | Simulator → tick-ingestor | ~500 ticks/s | 50 symbols × 100 ms interval |
 | tick-ingestor → Kafka | ~500 msgs/s | outbox: 200 ms poll, batch 500 |
-| Kafka → evaluator | ~500 msgs/s | `market-ticks`: 16 partitions |
-| Evaluator evaluation | ~500 evals/s | in-memory TreeMap |
+| Kafka → evaluator | ~500 msgs/s | `market-ticks`: 16 partitions, 2 consumer instances |
+| Evaluator evaluation | ~500 evals/s | lock-free in-memory TreeMap, 16 threads |
 | Evaluator → Kafka (triggers) | burst only | outbox: 1 000 ms poll, batch 50 |
-| Kafka → notification-persister | burst only | `alert-triggers`: 8 partitions |
+| Kafka → notification-persister | burst only | `alert-triggers`: 8 partitions, RF=3 |
 
-### Known gaps in the current configuration
+---
 
-| Gap | Location | Impact |
+## 3. P1 — Config Improvements
+
+### 1.1 Kafka consumer concurrency
+
+**File:** `evaluator/src/main/java/.../application/config/KafkaConsumerConfig.java`
+
+```java
+// market-ticks: 16 threads — one per partition
+factory.setConcurrency(16);
+factory.setBatchListener(true);
+factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.BATCH);
+
+// alert-changes: 8 threads — one per partition
+factory.setConcurrency(8);
+```
+
+Without explicit concurrency, Spring Kafka uses a single thread per container regardless of partition count. Setting concurrency to 16 allows up to 16 threads to consume in parallel.
+
+### 1.2 Custom `@Async` thread pool
+
+**File:** `evaluator/src/main/java/.../application/config/AsyncConfig.java`
+
+Replaced Spring's default executor (`core=1`, unbounded queue) with:
+
+```java
+executor.setCorePoolSize(4);
+executor.setMaxPoolSize(16);
+executor.setQueueCapacity(500);
+executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+```
+
+Under a trigger burst, `markTriggeredToday()` calls now execute in parallel (bounded by the HikariCP pool) instead of queuing behind a single thread.
+
+### 1.3 JVM heap + ZGC
+
+**File:** `docker-compose.yml` and `infra/terraform/modules/applications/main.tf`
+
+```yaml
+JAVA_TOOL_OPTIONS: "-Xms256m -Xmx512m -XX:+UseZGC -XX:+ZGenerational"
+```
+
+ZGC (Java 21+) has sub-millisecond pause times — critical for a latency-sensitive evaluation loop. Heap sizes per service:
+
+| Service | -Xms | -Xmx |
 |---|---|---|
-| No explicit Kafka consumer concurrency | evaluator, notifier | Under-utilises multi-core machines |
-| No JVM heap limits in containers | all services | GC pauses unpredictable under load |
-| Sampling rate 100% | all services | Tempo trace volume grows linearly with load |
-| Single-node Kafka (KRaft) | docker-compose | No horizontal Kafka scaling |
-| Single PostgreSQL instance | docker-compose | Connection pool contention at scale |
-| No HikariCP tuning | all services | Default pool size (10) may be too small or too large |
-| `@Async` uses default Spring thread pool | evaluator | core=1, unbounded queue — can pile up under burst |
+| evaluator | 256m | 512m |
+| alert-api | 128m | 256m |
+| tick-ingestor | 128m | 256m |
+| notification-persister | 128m | 256m |
+| market-feed-simulator | 64m | 128m |
 
----
+### 1.4 HikariCP connection pool
 
-## 3. Performance Improvement Plan
+**Files:** all `application.yml` files (primary datasource via `spring.datasource.hikari.*`)
 
-Improvements are grouped into three tiers by effort and impact.
-
----
-
-### Tier 1 — Quick wins (config changes only, no code)
-
-#### 1.1 Set Kafka consumer concurrency explicitly
-
-**Where:** `evaluator/src/main/java/.../application/config/KafkaConsumerConfig.java`
-
-Concurrency should equal the number of partitions the consumer group is assigned. With 16 partitions
-for `market-ticks` and 8 for `alert-changes`, the optimal values are:
-
-```java
-// marketTickListenerContainerFactory
-factory.setConcurrency(16);   // match market-ticks partition count
-
-// alertChangeListenerContainerFactory
-factory.setConcurrency(8);    // match alert-changes partition count
-```
-
-**Why it matters:** Without this, Spring Kafka uses a single thread per container regardless of
-partition count. On a 4-core machine, 16 partitions are all consumed by one thread.
-Setting concurrency to 16 allows up to 16 threads to consume in parallel — one per partition.
-
-**Constraint:** Concurrency cannot exceed partition count. Extra threads sit idle.
-
----
-
-#### 1.2 Tune the `@Async` thread pool in evaluator
-
-**Where:** `evaluator/src/main/java/.../application/` — add a new `AsyncConfig.java`
-
-The default Spring async executor has `corePoolSize=1` and an unbounded queue. Under a trigger
-burst, `markTriggeredToday()` calls pile up in the queue instead of being executed in parallel.
-
-```java
-@Configuration
-@EnableAsync
-public class AsyncConfig implements AsyncConfigurer {
-    @Override
-    public Executor getAsyncExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(4);
-        executor.setMaxPoolSize(16);
-        executor.setQueueCapacity(500);
-        executor.setThreadNamePrefix("async-db-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        executor.initialize();
-        return executor;
-    }
-}
-```
-
----
-
-#### 1.3 Set explicit JVM heap limits in Docker
-
-**Where:** `Dockerfile` or `docker-compose.yml` environment variables
-
-Without explicit limits, the JVM uses container memory / 4 as initial heap, leading to frequent
-GC when the evaluator's in-memory index grows large (thousands of alerts).
-
-```yaml
-# docker-compose.yml — evaluator service
-environment:
-  JAVA_TOOL_OPTIONS: "-Xms256m -Xmx512m -XX:+UseZGC -XX:+ZGenerational"
-```
-
-ZGC (available since Java 21) has sub-millisecond pause times — important for a latency-sensitive
-evaluation loop. For Java 25 the generational mode is on by default but explicit flags make it clear.
-
-Recommended heap sizes by service:
-
-| Service | -Xms | -Xmx | Rationale |
+| Service | max pool | min idle | Rationale |
 |---|---|---|---|
-| evaluator | 256m | 512m | Index size grows with alert count |
-| alert-api | 128m | 256m | Short-lived request objects |
-| tick-ingestor | 128m | 256m | Throughput not heap-bound |
-| notification-persister | 128m | 256m | DB writes, no large in-memory state |
-| market-feed-simulator | 64m | 128m | Stateless price generator |
+| alert-api | 20 | 5 | Concurrent REST requests |
+| evaluator | 10 | 2 | Async status updates |
+| tick-ingestor | 10 | 2 | Outbox writes |
+| notification-persister | 10 | 2 | Notification inserts |
 
----
+Total across all services: ≤ 80 connections — within PostgreSQL's default `max_connections=100`. Each service also has a replica pool (max=10 evaluator, max=10 alert-api) — see P3.4.
 
-#### 1.4 Tune HikariCP connection pool
+### 1.5 Tracing sampling rate
 
-**Where:** all `application.yml` files that connect to PostgreSQL
-
-The default pool size of 10 is based on the rule of thumb for latency-bound workloads. For the
-evaluator (burst of async DB writes) and alert-api (many short-lived REST requests), explicit
-tuning prevents both connection starvation and over-provisioning.
+**Files:** all `application.yml` files (production profile)
 
 ```yaml
-# evaluator/src/main/resources/application.yml
-spring:
-  datasource:
-    hikari:
-      maximum-pool-size: 10        # evaluator only does async status updates
-      minimum-idle: 2
-      connection-timeout: 3000
-      idle-timeout: 300000
-      max-lifetime: 1200000
-
-# alert-api/src/main/resources/application.yml
-spring:
-  datasource:
-    hikari:
-      maximum-pool-size: 20        # REST API handles concurrent requests
-      minimum-idle: 5
-      connection-timeout: 3000
-```
-
-Total connections across all services must stay below PostgreSQL's `max_connections` (default 100).
-With 4 services × 10–20 connections = 40–80 connections — within budget.
-
 ---
-
-#### 1.5 Reduce tracing sampling rate in production
-
-**Where:** all `application.yml` files
-
-100% sampling is correct for development but generates one trace per market tick in production
-(500 spans/second from the evaluator alone).
-
-```yaml
-# application.yml (all services) — production profile
+spring:
+  config:
+    activate:
+      on-profile: production
 management:
   tracing:
     sampling:
-      probability: 0.01   # 1% sampling in production
+      probability: 0.01   # 1% in production
 ```
 
-Keep 100% (`1.0`) only in the `local` and `docker` profiles.
+Default stays `1.0` for local/docker development. Activating the `production` profile reduces Tempo trace volume 100×.
 
 ---
 
-### Tier 2 — Code changes (medium effort, significant impact)
+## 4. P2 — Code Improvements
 
-#### 2.1 Batch Kafka consumer in evaluator — process multiple ticks per transaction
+### 2.1 Batch Kafka consumer
 
-**Where:** `evaluator/src/main/java/.../infrastructure/kafka/MarketTickConsumer.java`
-
-Currently the consumer processes one tick at a time (`@KafkaListener` on a single `MarketTick`
-object). Each tick that fires an alert results in one outbox DB write + one async DB update —
-individually. Batching amortises the transaction overhead.
+**File:** `evaluator/src/main/java/.../infrastructure/kafka/MarketTickConsumer.java`
 
 ```java
-// Current — one tick per call
-@KafkaListener(...)
-@Transactional
+// Before: one tick per transaction
 public void onMarketTick(MarketTick tick) { ... }
 
-// Proposed — batch of ticks per call
-@KafkaListener(...)
-@Transactional
+// After: batch of ticks per transaction
 public void onMarketTicks(List<MarketTick> ticks) {
     for (var tick : ticks) {
         var triggers = evaluationEngine.evaluate(tick.symbol(), tick.price(), tick.timestamp());
@@ -226,181 +148,162 @@ public void onMarketTicks(List<MarketTick> ticks) {
 }
 ```
 
-Enable batch mode in `KafkaConsumerConfig`:
+Combined with `setBatchListener(true)` and `AckMode.BATCH` in `KafkaConsumerConfig`, this reduces transaction overhead by up to 90% during high-throughput bursts — one transaction per batch instead of one per tick.
+
+### 2.2 Redis rate limiting
+
+**File:** `alert-api/src/main/java/.../application/service/AlertCommandHandler.java`
 
 ```java
-factory.setBatchListener(true);
-factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.BATCH);
-```
-
-This reduces transaction overhead by up to 90% during high-throughput bursts.
-
----
-
-#### 2.2 Add Redis rate limiting to alert-api
-
-**Where:** `alert-api/src/main/java/.../application/` — new `RateLimitFilter.java` or
-`AlertCommandHandler.java`
-
-Redis is already wired. This uses the existing `spring-boot-starter-data-redis` dependency:
-
-```java
-// In AlertCommandHandler.createAlert()
-String key = "rate:alerts:" + userId;
-Long count = redisTemplate.opsForValue().increment(key);
-if (count == 1L) {
-    redisTemplate.expire(key, Duration.ofMinutes(1));
-}
-if (count > 10) {
-    throw new RateLimitExceededException("Alert creation limit: 10 per minute");
+private void checkRateLimit(String userId) {
+    var key = "rate:alerts:" + userId;
+    var count = redisTemplate.opsForValue().increment(key);
+    if (count == 1L) {
+        redisTemplate.expire(key, RATE_LIMIT_WINDOW);  // 1 minute
+    }
+    if (count > RATE_LIMIT_MAX) {  // 10
+        throw RateLimitExceededException.alertCreationLimit(RATE_LIMIT_MAX);
+    }
 }
 ```
 
-This protects the DB from alert floods that would bloat the evaluator's in-memory index.
+`RateLimitExceededException` is handled by `GlobalExceptionHandler` → HTTP 429.
 
----
+### 2.3 Redis JWT blacklist
 
-#### 2.3 Add Redis JWT blacklist to alert-api
-
-**Where:** `alert-api/src/main/java/.../application/security/JwtAuthenticationFilter.java`
-
-Currently tokens cannot be revoked. Add a blacklist check:
+**File:** `alert-api/src/main/java/.../application/security/JwtAuthenticationFilter.java`
 
 ```java
-// On successful token parse, check blacklist
-String jti = claims.getId();   // requires jti claim in token
-if (jti != null && redisTemplate.hasKey("blacklist:" + jti)) {
+var jti = claims.jti();
+if (jti != null && Boolean.TRUE.equals(redisTemplate.hasKey("blacklist:" + jti))) {
     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token revoked");
     return;
 }
 ```
 
-Add a `DELETE /api/v1/auth/logout` endpoint that writes to the blacklist with TTL = remaining
-token validity.
+**File:** `alert-api/src/main/java/.../application/controller/auth/AuthController.java`
+
+`DELETE /api/v1/auth/logout` extracts the `jti` and `exp` claims from the bearer token, then writes:
+
+```
+SET blacklist:{jti} 1 EX {remaining_seconds}
+```
+
+TTL is set to remaining token validity so the key auto-expires when the token would have expired anyway — no manual cleanup needed.
+
+### 2.4 Paginated warm-up
+
+**File:** `evaluator/src/main/java/.../infrastructure/db/WarmUpService.java`
+
+```java
+Page<AlertRow> batch;
+do {
+    batch = repository.findByStatus(AlertStatus.ACTIVE, PageRequest.of(page++, batchSize));
+    batch.forEach(row -> indexManager.addAlert(toEntry(row)));
+} while (batch.hasNext());
+```
+
+Batch size is configurable (`evaluator.warmup.batch-size: 10000`). Replaces the previous single-query load that caused OOM on large datasets and blocked startup.
 
 ---
 
-#### 2.4 Warm-up in parallel batches
+## 5. P3 — Architecture Improvements
 
-**Where:** `evaluator/src/main/java/.../infrastructure/db/WarmUpService.java`
+### 3.1 Lock-free partition index
 
-The current warm-up loads all ACTIVE alerts in a single query. For large datasets (millions of
-alerts) this causes a long startup delay and a large heap spike.
+**File:** `evaluator/src/main/java/.../domain/evaluation/SymbolAlertIndex.java`
+
+The `ReentrantReadWriteLock` was removed entirely. This is safe because:
+
+1. Market ticks are keyed by `symbol` → all ticks for a symbol land on the same Kafka partition
+2. Alert-changes use the same keying strategy → co-partitioned with ticks
+3. `setConcurrency(16)` assigns one consumer thread per partition
+4. Result: each `SymbolAlertIndex` is accessed by exactly one thread — no contention is possible
+
+```
+Partition 0  (AAPL, GOOG, ...)  →  thread 0  →  its own SymbolAlertIndex (no lock)
+Partition 1  (MSFT, AMZN, ...)  →  thread 1  →  its own SymbolAlertIndex (no lock)
+...
+Partition 15 (TSLA, META, ...)  →  thread 15 →  its own SymbolAlertIndex (no lock)
+```
+
+The warm-up path (single-threaded, before consumers start) still writes through `AlertIndexManager`'s `ConcurrentHashMap` which provides the necessary safety for that phase.
+
+### 3.2 Multiple evaluator instances
+
+**Files:** `docker-compose.yml`, `infra/terraform/modules/applications/main.tf`
+
+`evaluator` and `evaluator-2` both join the `evaluator-ticks` consumer group. Kafka's cooperative sticky assignor distributes partitions:
+
+```
+evaluator:   partitions 0–7   (symbols: AAPL, GOOG, MSFT, ...)
+evaluator-2: partitions 8–15  (symbols: TSLA, META, AMZN, ...)
+```
+
+No shared state is needed between instances — each owns a disjoint symbol set. Maximum useful instances = partition count (16).
+
+### 3.3 3-broker Kafka cluster
+
+**Files:** `docker-compose.yml`, `infra/terraform/modules/infrastructure/main.tf`
+
+| Broker | Internal | External |
+|---|---|---|
+| kafka | kafka:19092 | localhost:9092 |
+| kafka-2 | kafka-2:19092 | localhost:9093 |
+| kafka-3 | kafka-3:19092 | localhost:9094 |
+
+Controller quorum: `1@kafka:9093,2@kafka-2:9093,3@kafka-3:9093`
+
+All topics created with `replication-factor=3`, `min.insync.replicas=2`. Single-broker failure no longer causes data loss or unavailability. All application services use the full bootstrap list:
+
+```
+kafka:19092,kafka-2:19092,kafka-3:19092
+```
+
+### 3.4 PostgreSQL read replica routing
+
+**Files:** `alert-api/src/main/java/.../application/config/DataSourceConfig.java`, `evaluator/.../config/DataSourceConfig.java`
+
+`AbstractRoutingDataSource` inspects the current transaction's read-only flag and routes accordingly:
 
 ```java
-@EventListener(ApplicationReadyEvent.class)
-@Transactional(readOnly = true)
-public void warmUp() {
-    int page = 0;
-    List<AlertWarmUpRow> batch;
-    do {
-        batch = repository.findByStatus(AlertStatus.ACTIVE,
-                PageRequest.of(page++, properties.warmup().batchSize()));
-        batch.forEach(row -> indexManager.addAlert(toEntry(row)));
-    } while (batch.size() == properties.warmup().batchSize());
-
-    log.info("Warm-up complete: {} alerts across {} symbols",
-            indexManager.totalAlerts(), indexManager.symbolCount());
+protected Object determineCurrentLookupKey() {
+    return TransactionSynchronizationManager.isCurrentTransactionReadOnly()
+            ? "replica"
+            : "primary";
 }
 ```
 
-The batch size is already configurable (`evaluator.warmup.batch-size: 10000`). Pagination prevents
-OOM on large datasets and allows the service to begin accepting Kafka events sooner.
+Operations that benefit:
+- `WarmUpService.warmUp()` — `@Transactional(readOnly=true)` → replica
+- `NotificationController.listNotifications()` → `NotificationRepositoryAdapter.findByUserId()` — `@Transactional(readOnly=true)` → replica
+- All writes (alert creation, status updates, notification inserts) → primary
+
+In local/docker the replica URL defaults to the primary (no actual replica running). In production, set `spring.datasource.replica.hikari.jdbc-url=jdbc:postgresql://postgres-replica:5432/price_alerts` or override via the `production` profile.
 
 ---
 
-### Tier 3 — Architecture changes (high effort, enables horizontal scale)
+## 6. Roadmap Status
 
-#### 3.1 Partition the in-memory index by consumer thread (eliminate lock contention)
-
-**Current situation:** One `SymbolAlertIndex` per symbol with a `ReentrantReadWriteLock`. All 16
-consumer threads contend on the write lock for the same high-volume symbols (AAPL, MSFT, TSLA).
-
-**Proposed approach:** Each Kafka partition owns a disjoint set of symbols. Symbols are assigned
-to partitions by `hash(symbol) % partitionCount`. Each consumer thread owns its partitions and
-their indices — **no lock needed** because threads never share a symbol.
-
-```
-Partition 0  (AAPL, GOOG, ...)  →  consumer thread 0  →  its own SymbolAlertIndex
-Partition 1  (MSFT, AMZN, ...)  →  consumer thread 1  →  its own SymbolAlertIndex
-...
-Partition 15 (TSLA, META, ...)  →  consumer thread 15 →  its own SymbolAlertIndex
-```
-
-This requires tick producers to key messages by `symbol` (already the case) and alert-changes
-to be co-partitioned with ticks (same keying strategy — already the case).
-
-**Impact:** Eliminates lock contention entirely. Linear scalability with partition count.
+| Priority | Change | Status |
+|---|---|---|
+| **P1** | 1.1 — Kafka consumer concurrency | ✅ Done |
+| **P1** | 1.2 — Async thread pool | ✅ Done |
+| **P1** | 1.3 — JVM heap + ZGC | ✅ Done |
+| **P2** | 1.4 — HikariCP pool sizing | ✅ Done |
+| **P2** | 1.5 — Tracing sampling rate | ✅ Done |
+| **P2** | 2.1 — Batch Kafka consumer | ✅ Done |
+| **P2** | 2.2 — Redis rate limiting | ✅ Done |
+| **P2** | 2.3 — Redis JWT blacklist | ✅ Done |
+| **P3** | 2.4 — Paginated warm-up | ✅ Done |
+| **P3** | 3.1 — Lock-free partition index | ✅ Done |
+| **P3** | 3.2 — Multiple evaluator instances | ✅ Done |
+| **P3** | 3.3 — Multi-node Kafka | ✅ Done |
+| **P3** | 3.4 — PG read replica routing | ✅ Done |
 
 ---
 
-#### 3.2 Scale evaluator horizontally (multiple instances)
-
-With partition-per-thread isolation (3.1), running multiple evaluator instances is safe — Kafka's
-consumer group rebalancing assigns disjoint partitions to each instance.
-
-```
-evaluator-instance-1: partitions 0–7   (symbols: AAPL, GOOG, MSFT, ...)
-evaluator-instance-2: partitions 8–15  (symbols: TSLA, META, AMZN, ...)
-```
-
-No shared state is needed between instances because each owns a disjoint symbol set.
-
-**Constraint:** Number of useful instances ≤ partition count (16). Beyond that, instances sit idle.
-
----
-
-#### 3.3 Multi-node Kafka cluster
-
-The current KRaft setup is single-broker. For production:
-
-- Minimum 3 brokers for fault tolerance
-- Replication factor 3 for all topics
-- Separate controller quorum from brokers
-
-This unblocks increasing partition counts beyond what a single broker can handle, and provides
-durability guarantees (current RF=1 means one broker failure = data loss).
-
----
-
-#### 3.4 PostgreSQL read replica for warm-up and notification queries
-
-The warm-up (`WarmUpService`) and notification list (`GET /api/v1/notifications`) are read-heavy
-and do not need the primary. Routing these to a read replica offloads the primary for writes.
-
-```yaml
-# evaluator — read replica for warm-up
-spring:
-  datasource:
-    url: jdbc:postgresql://postgres-replica:5432/price_alerts
-
-# alert-api — read replica for GET /notifications
-# Requires Spring's @Transactional(readOnly=true) routing to replica datasource
-```
-
----
-
-## 4. Prioritised Roadmap
-
-| Priority | Change | Effort | Expected Gain |
-|---|---|---|---|
-| **P1** | 1.1 — Set consumer concurrency | 5 min | Full CPU utilisation for evaluation |
-| **P1** | 1.2 — Tune async thread pool | 15 min | No burst queue pile-up |
-| **P1** | 1.3 — JVM heap + ZGC | 10 min | Predictable GC pauses < 1 ms |
-| **P2** | 1.4 — HikariCP pool sizing | 15 min | No connection starvation or waste |
-| **P2** | 1.5 — Tracing sampling rate | 5 min | Reduce Tempo storage 100× in prod |
-| **P2** | 2.1 — Batch Kafka consumer | 2–4 h | Up to 90% less transaction overhead |
-| **P2** | 2.2 — Redis rate limiting | 2–4 h | Protect API + evaluator index from floods |
-| **P2** | 2.3 — Redis JWT blacklist | 2–4 h | Token revocation capability |
-| **P3** | 2.4 — Paginated warm-up | 1–2 h | Handles millions of alerts at startup |
-| **P3** | 3.1 — Lock-free partition index | 1–2 days | Linear horizontal scale for evaluation |
-| **P3** | 3.2 — Multiple evaluator instances | 1 day | Horizontal scale (requires 3.1) |
-| **P3** | 3.3 — Multi-node Kafka | 1 day | Production durability + partition headroom |
-| **P3** | 3.4 — PG read replica | 1 day | Offload reads from primary |
-
----
-
-## 5. What NOT to Do
+## 7. What NOT to Do
 
 | Suggestion | Why to avoid |
 |---|---|
@@ -409,3 +312,4 @@ spring:
 | Increase `market-ticks` partitions beyond evaluator thread count | Idle partitions, no gain |
 | 100% trace sampling in production | One span per tick = 500 spans/s = Tempo storage explosion |
 | Disable outbox pattern for "speed" | Loses at-least-once delivery guarantee — silent data loss |
+| Add locking back to `SymbolAlertIndex` | Defeats the purpose of symbol-keyed partitioning |
