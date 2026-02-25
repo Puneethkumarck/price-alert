@@ -444,6 +444,7 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`) and h
 | Prometheus | latest |
 | Loki + Promtail | latest |
 | Tempo | latest |
+| Terraform | >= 1.5.0 (kreuzwerker/docker ~> 3.0) |
 | Testcontainers | 1.21.3 |
 | Jackson | 3.x (via Spring Boot 4) |
 | Flyway | 11.x |
@@ -538,10 +539,29 @@ price-alert-system/
 │           ├── jvm-overview.json
 │           └── service-logs.json
 │
+├── infra/
+│   └── terraform/                  # Terraform IaC (terraform-provider-docker)
+│       ├── terraform.tf            # kreuzwerker/docker ~> 3.0, backend "local"
+│       ├── providers.tf            # Docker socket provider
+│       ├── main.tf                 # Root module — orchestrates 4 child modules
+│       ├── variables.tf            # 10 variables (jwt_secret, db_password, grafana_admin_password sensitive)
+│       ├── outputs.tf              # Service URLs after apply
+│       ├── environments/
+│       │   └── local.tfvars        # Non-sensitive values (image tags, db names, source path)
+│       ├── secrets.auto.tfvars.example  # Template for sensitive values (git-ignored in practice)
+│       └── modules/
+│           ├── network/            # docker_network (bridge, 172.20.0.0/16)
+│           ├── infrastructure/     # kafka, kafka-init (one-shot), postgres + pgdata volume, redis
+│           ├── applications/       # 5 docker_image builds + 5 docker_container resources
+│           └── monitoring/         # prometheus, loki, promtail, tempo, grafana
+│
 ├── scripts/
-│   └── launch.sh                   # Build, start, test, stop (single entry point)
+│   ├── launch.sh                   # Docker Compose: build, start, test, stop
+│   └── terraform.sh                # Terraform: up, down, plan, status, test, clean
 ├── docs/
 │   ├── OVERVIEW.md                 # This file
+│   ├── EVALUATION_ENGINE.md        # Deep-dive: how the core evaluation engine works with examples
+│   ├── PERFORMANCE_AND_SCALABILITY.md  # Redis analysis, performance improvements, scaling plan
 │   ├── TESTING.md                  # Complete testing guide
 │   ├── TROUBLESHOOTING.md          # 12 issues with root cause analysis
 │   ├── dataflow.html               # Interactive animated 17-step visualization
@@ -555,6 +575,8 @@ price-alert-system/
 ---
 
 ## Quick Start
+
+### Docker Compose (default)
 
 ```bash
 # Build and start the full stack (13 containers)
@@ -588,11 +610,43 @@ open docs/dataflow.html
 ./scripts/launch.sh clean
 ```
 
+### Terraform (alternative IaC)
+
+```bash
+# 1. Set up secrets (one-time per machine)
+cp infra/terraform/secrets.auto.tfvars.example infra/terraform/secrets.auto.tfvars
+# Edit secrets.auto.tfvars — fill in jwt_secret, db_password, grafana_admin_password
+
+# 2. Build JARs + init + apply in one command
+./scripts/terraform.sh up
+
+# Skip Gradle build if JARs already exist
+./scripts/terraform.sh up --skip-build
+
+# Dry-run: see what Terraform would create
+./scripts/terraform.sh plan
+
+# Show running containers and service URLs
+./scripts/terraform.sh status
+
+# Run the E2E happy path test
+./scripts/terraform.sh test
+
+# Destroy (PostgreSQL pgdata volume is protected)
+./scripts/terraform.sh down
+
+# Destroy everything including pgdata volume
+./scripts/terraform.sh clean
+```
+
+The Terraform stack provisions the same 13 containers as Docker Compose via the `kreuzwerker/docker` provider. Module dependency order: `network → infrastructure → applications → monitoring`.
+
 ---
 
 ## Commit History
 
 ```
+277f579 docs: update OVERVIEW.md to reflect monitoring stack and recent fixes
 b5d8d23 fix: tick-ingestor Kafka config + add troubleshooting guide
 29fed1d feat: add production monitoring with Grafana, Prometheus, Loki, and Tempo
 3cc1237 fix: WebSocket concurrency, Kafka producer tuning, and outbox handlers
