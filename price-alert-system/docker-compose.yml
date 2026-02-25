@@ -74,6 +74,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseZGC -XX:+ZGenerational"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/price_alerts
       SPRING_DATASOURCE_USERNAME: alerts
       SPRING_DATASOURCE_PASSWORD: alerts_local
@@ -101,6 +102,8 @@ services:
         MODULE: market-feed-simulator
     ports:
       - "8085:8085"
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms64m -Xmx128m -XX:+UseZGC -XX:+ZGenerational"
     healthcheck:
       test: wget -qO- http://localhost:8085/actuator/health || exit 1
       interval: 10s
@@ -114,6 +117,7 @@ services:
       args:
         MODULE: tick-ingestor
     environment:
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseZGC -XX:+ZGenerational"
       INGESTOR_SIMULATOR_URL: ws://market-feed-simulator:8085/v1/feed
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/price_alerts
@@ -140,6 +144,7 @@ services:
       args:
         MODULE: evaluator
     environment:
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx512m -XX:+UseZGC -XX:+ZGenerational"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/price_alerts
       SPRING_DATASOURCE_USERNAME: alerts
       SPRING_DATASOURCE_PASSWORD: alerts_local
@@ -158,6 +163,7 @@ services:
       args:
         MODULE: notification-persister
     environment:
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m -XX:+UseZGC -XX:+ZGenerational"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/price_alerts
       SPRING_DATASOURCE_USERNAME: alerts
       SPRING_DATASOURCE_PASSWORD: alerts_local

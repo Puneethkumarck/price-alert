@@ -31,6 +31,10 @@ resource "docker_container" "market_feed_simulator" {
   name  = "market-feed-simulator"
   image = docker_image.market_feed_simulator.image_id
 
+  env = [
+    "JAVA_TOOL_OPTIONS=-Xms64m -Xmx128m -XX:+UseZGC -XX:+ZGenerational",
+  ]
+
   ports {
     internal = 8085
     external = 8085
@@ -74,6 +78,7 @@ resource "docker_container" "alert_api" {
   image = docker_image.alert_api.image_id
 
   env = [
+    "JAVA_TOOL_OPTIONS=-Xms128m -Xmx256m -XX:+UseZGC -XX:+ZGenerational",
     "SPRING_DATASOURCE_URL=${local.jdbc_url}",
     "SPRING_DATASOURCE_USERNAME=${var.db_user}",
     "SPRING_DATASOURCE_PASSWORD=${var.db_password}",
@@ -132,6 +137,7 @@ resource "docker_container" "tick_ingestor" {
   image = docker_image.tick_ingestor.image_id
 
   env = [
+    "JAVA_TOOL_OPTIONS=-Xms128m -Xmx256m -XX:+UseZGC -XX:+ZGenerational",
     "INGESTOR_SIMULATOR_URL=ws://market-feed-simulator:8085/v1/feed",
     "SPRING_KAFKA_BOOTSTRAP_SERVERS=${var.kafka_bootstrap}",
     "SPRING_DATASOURCE_URL=${local.jdbc_url}",
@@ -186,6 +192,7 @@ resource "docker_container" "evaluator" {
   image = docker_image.evaluator.image_id
 
   env = [
+    "JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m -XX:+UseZGC -XX:+ZGenerational",
     "SPRING_DATASOURCE_URL=${local.jdbc_url}",
     "SPRING_DATASOURCE_USERNAME=${var.db_user}",
     "SPRING_DATASOURCE_PASSWORD=${var.db_password}",
@@ -235,6 +242,7 @@ resource "docker_container" "notification_persister" {
   image = docker_image.notification_persister.image_id
 
   env = [
+    "JAVA_TOOL_OPTIONS=-Xms128m -Xmx256m -XX:+UseZGC -XX:+ZGenerational",
     "SPRING_DATASOURCE_URL=${local.jdbc_url}",
     "SPRING_DATASOURCE_USERNAME=${var.db_user}",
     "SPRING_DATASOURCE_PASSWORD=${var.db_password}",

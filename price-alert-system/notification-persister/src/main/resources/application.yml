@@ -8,6 +8,12 @@ spring:
     url: jdbc:postgresql://localhost:5432/price_alerts
     username: alerts
     password: alerts_local
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+      idle-timeout: 300000
+      max-lifetime: 1200000
   jpa:
     hibernate:
       ddl-auto: validate
@@ -34,7 +40,17 @@ management:
       application: ${spring.application.name}
   tracing:
     sampling:
-      probability: 1.0
+      probability: 1.0   # 100% for local/docker; overridden to 0.01 in production profile
   otlp:
     tracing:
       endpoint: http://tempo:4318/v1/traces
+
+---
+spring:
+  config:
+    activate:
+      on-profile: production
+management:
+  tracing:
+    sampling:
+      probability: 0.01

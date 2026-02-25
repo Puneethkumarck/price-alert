@@ -28,6 +28,7 @@ public class KafkaConsumerConfig {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, MarketTick>();
         factory.setConsumerFactory(consumerFactory(kafkaProperties, MarketTick.class, "evaluator-ticks"));
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        factory.setConcurrency(16); // match market-ticks partition count
         return factory;
     }
 
@@ -37,6 +38,7 @@ public class KafkaConsumerConfig {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, AlertChange>();
         factory.setConsumerFactory(consumerFactory(kafkaProperties, AlertChange.class, "evaluator-changes"));
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        factory.setConcurrency(8); // match alert-changes partition count
         return factory;
     }
 
