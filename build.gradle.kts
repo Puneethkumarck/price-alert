@@ -3,6 +3,8 @@ plugins {
     id("org.springframework.boot") version "4.0.3" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
     id("com.diffplug.spotless") version "8.2.1" apply false
+    id("org.sonarqube") version "5.1.0.4882"
+    id("jacoco")
 }
 
 allprojects {
@@ -17,6 +19,7 @@ allprojects {
 subprojects {
     apply(plugin = "java")
     apply(plugin = "com.diffplug.spotless")
+    apply(plugin = "jacoco")
 
     configure<com.diffplug.gradle.spotless.SpotlessExtension> {
         java {
@@ -57,5 +60,25 @@ subprojects {
 
     tasks.withType<JavaExec> {
         jvmArgs("--enable-preview")
+    }
+
+    tasks.withType<JacocoReport> {
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
+            csv.required.set(false)
+        }
+    }
+}
+
+sonarqube {
+    properties {
+        property("sonar.projectKey", "price-alert")
+        property("sonar.organization", "ranganathasoftware")
+        property("sonar.host.url", "https://sonarcloud.io")
+        property("sonar.sourceEncoding", "UTF-8")
+        property("sonar.java.binaries", "**/build/classes")
+        property("sonar.exclusions", "**/build/**,**/generated/**,**/*MapperImpl.java")
+        property("sonar.coverage.jacoco.xmlReportPaths", "**/build/reports/jacoco/test/jacocoTestReport.xml")
     }
 }

@@ -1,5 +1,7 @@
 # Price Alert System
 
+[![SonarCloud Status](https://sonarcloud.io/api/project_badges/measure?project=price-alert&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=price-alert)
+
 [![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk)](https://openjdk.org/)
 [![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.0.3-6DB33F?logo=spring)](https://spring.io/projects/spring-boot)
 [![Apache Kafka](https://img.shields.io/badge/Kafka-3.9.0-231F20?logo=apache-kafka)](https://kafka.apache.org/)
