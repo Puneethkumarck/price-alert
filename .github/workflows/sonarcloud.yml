@@ -34,6 +34,7 @@ jobs:
         run: ./gradlew jacocoTestReport
 
       # Sonar step uses Java 21 so Gradle can instrument Bouncy Castle (multi-release JAR) used by the Sonar plugin
+      # Ensure the project exists on SonarCloud: https://sonarcloud.io → Add project → Import from GitHub (org: ranganathasoftware, key: price-alert)
       - name: Set up JDK 21 for Sonar
         uses: actions/setup-java@v4
         with:
@@ -43,4 +44,4 @@ jobs:
       - name: SonarCloud scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: ./gradlew sonar -Dsonar.token="$SONAR_TOKEN"
+        run: ./gradlew sonar -Dsonar.token="$SONAR_TOKEN" -Dsonar.branch.name=${{ github.ref_name }}
