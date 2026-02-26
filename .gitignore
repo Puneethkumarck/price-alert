@@ -25,3 +25,36 @@ tasks/
 
 # Misc
 *.log
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+*.local
+
+# Terraform
+infra/terraform/terraform.tfstate
+infra/terraform/terraform.tfstate.backup
+infra/terraform/.terraform/
+infra/terraform/secrets.auto.tfvars
+infra/terraform/*.tfplan
+
+# Spring Boot generated META-INF
+META-INF/
+
