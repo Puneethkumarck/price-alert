@@ -3,7 +3,7 @@ plugins {
     id("org.springframework.boot") version "4.0.3" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
     id("com.diffplug.spotless") version "8.2.1" apply false
-    id("org.sonarqube") version "5.1.0.4882"
+    id("org.sonarqube") version "7.2.2.6593"
     id("jacoco")
 }
 
