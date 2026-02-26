@@ -6,6 +6,11 @@
 [![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.0.3-6DB33F?logo=spring)](https://spring.io/projects/spring-boot)
 [![Apache Kafka](https://img.shields.io/badge/Kafka-3.9.0-231F20?logo=apache-kafka)](https://kafka.apache.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)](https://redis.io/)
+[![Namastack Outbox](https://img.shields.io/badge/Namastack-Outbox-6DB33F?logo=spring)](https://github.com/namastack/namastack-outbox)
+[![Testcontainers](https://img.shields.io/badge/Testcontainers-Java-3DDC84?logo=docker)](https://testcontainers.com/)
+[![Terraform](https://img.shields.io/badge/Terraform-HashiCorp-7B42BC?logo=terraform)](https://www.terraform.io/)
+[![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?logo=grafana)](https://grafana.com/)
 [![License](https://img.shields.io/badge/License-See%20repo-lightgrey)](LICENSE)
 
 Real-time price alerting for US equities: create alerts (e.g. *“Notify me when AAPL goes above $150”*), and get persisted notifications when live market ticks cross your thresholds. Built as a production-ready Spring Boot microservice system with Kafka, PostgreSQL, Redis, transactional outbox, multi-layer deduplication, and full observability.
