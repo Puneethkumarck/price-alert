@@ -3,11 +3,10 @@ package com.pricealert.alertapi.test.fixtures;
 import com.pricealert.alertapi.domain.alert.Alert;
 import com.pricealert.common.event.AlertStatus;
 import com.pricealert.common.event.Direction;
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class AlertFixtures {

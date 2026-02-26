@@ -21,11 +21,13 @@ public class AlertTriggerConsumer {
     @KafkaListener(
             topics = KafkaTopics.ALERT_TRIGGERS,
             groupId = "notification-persister-group",
-            containerFactory = "alertTriggerListenerContainerFactory"
-    )
+            containerFactory = "alertTriggerListenerContainerFactory")
     public void onAlertTrigger(AlertTrigger trigger) {
-        log.debug("Received AlertTrigger: alert_id={}, symbol={}, trigger_price={}",
-                trigger.alertId(), trigger.symbol(), trigger.triggerPrice());
+        log.debug(
+                "Received AlertTrigger: alert_id={}, symbol={}, trigger_price={}",
+                trigger.alertId(),
+                trigger.symbol(),
+                trigger.triggerPrice());
         var inserted = persistenceService.persist(trigger);
         if (inserted) {
             notificationsPersistedCounter.increment();

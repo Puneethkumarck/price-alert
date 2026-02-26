@@ -17,6 +17,9 @@ public class AlertChangePublisher implements AlertEventPublisher {
     @Override
     public void publish(AlertChange event) {
         outbox.schedule(event, event.symbol());
-        log.debug("Scheduled AlertChange {} for alert {} to outbox", event.eventType(), event.alertId());
+        log.debug(
+                "Scheduled AlertChange {} for alert {} to outbox",
+                event.eventType(),
+                event.alertId());
     }
 }

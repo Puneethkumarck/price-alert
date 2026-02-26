@@ -1,10 +1,6 @@
 package com.pricealert.simulator.domain.registry;
 
 import com.pricealert.simulator.application.config.SimulatorProperties;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ResourceLoader;
-import org.springframework.stereotype.Component;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
@@ -13,6 +9,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
@@ -24,8 +23,10 @@ public class SymbolRegistry {
         Map<String, BigDecimal> prices = new LinkedHashMap<>();
         try {
             var resource = resourceLoader.getResource(properties.symbolsFile());
-            try (var reader = new BufferedReader(
-                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+            try (var reader =
+                    new BufferedReader(
+                            new InputStreamReader(
+                                    resource.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 var header = true;
                 while ((line = reader.readLine()) != null) {

@@ -33,15 +33,16 @@ public class AlertController {
 
     @PostMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AlertResponse> createAlert(@Valid @RequestBody CreateAlertRequest request, Authentication auth) {
+    public ResponseEntity<AlertResponse> createAlert(
+            @Valid @RequestBody CreateAlertRequest request, Authentication auth) {
         var userId = auth.getName();
-        var alert = alertCommandHandler.createAlert(
-                userId,
-                request.symbol(),
-                request.thresholdPrice(),
-                request.direction(),
-                request.note()
-        );
+        var alert =
+                alertCommandHandler.createAlert(
+                        userId,
+                        request.symbol(),
+                        request.thresholdPrice(),
+                        request.direction(),
+                        request.note());
         return ResponseEntity.status(HttpStatus.CREATED).body(mapper.toResponse(alert));
     }
 
@@ -53,7 +54,8 @@ public class AlertController {
             @PageableDefault(size = 20) Pageable pageable,
             Authentication auth) {
         var userId = auth.getName();
-        return alertCommandHandler.listAlerts(userId, status, symbol, pageable)
+        return alertCommandHandler
+                .listAlerts(userId, status, symbol, pageable)
                 .map(mapper::toResponse);
     }
 
@@ -71,9 +73,13 @@ public class AlertController {
             @Valid @RequestBody UpdateAlertRequest request,
             Authentication auth) {
         var userId = auth.getName();
-        return mapper.toResponse(alertCommandHandler.updateAlert(
-                alertId, userId, request.thresholdPrice(), request.direction(), request.note()
-        ));
+        return mapper.toResponse(
+                alertCommandHandler.updateAlert(
+                        alertId,
+                        userId,
+                        request.thresholdPrice(),
+                        request.direction(),
+                        request.note()));
     }
 
     @DeleteMapping("/{alertId}")

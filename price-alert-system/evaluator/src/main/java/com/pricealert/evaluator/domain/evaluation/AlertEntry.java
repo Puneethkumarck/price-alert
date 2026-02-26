@@ -1,9 +1,8 @@
 package com.pricealert.evaluator.domain.evaluation;
 
 import com.pricealert.common.event.Direction;
-import lombok.Builder;
-
 import java.math.BigDecimal;
+import lombok.Builder;
 
 @Builder(toBuilder = true)
 public record AlertEntry(
@@ -12,6 +11,4 @@ public record AlertEntry(
         String symbol,
         BigDecimal thresholdPrice,
         Direction direction,
-        String note
-) {
-}
+        String note) {}

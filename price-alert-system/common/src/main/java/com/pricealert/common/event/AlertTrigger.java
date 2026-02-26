@@ -1,11 +1,10 @@
 package com.pricealert.common.event;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Builder;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import lombok.Builder;
 
 @Builder(toBuilder = true)
 public record AlertTrigger(
@@ -19,6 +18,4 @@ public record AlertTrigger(
         String note,
         @JsonProperty("tick_timestamp") Instant tickTimestamp,
         @JsonProperty("triggered_at") Instant triggeredAt,
-        @JsonProperty("trading_date") LocalDate tradingDate
-) {
-}
+        @JsonProperty("trading_date") LocalDate tradingDate) {}

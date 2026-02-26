@@ -1,10 +1,9 @@
 package com.pricealert.alertapi.domain.notification;
 
 import com.pricealert.common.event.Direction;
-import lombok.Builder;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import lombok.Builder;
 
 @Builder(toBuilder = true)
 public record Notification(
@@ -19,6 +18,4 @@ public record Notification(
         String note,
         String idempotencyKey,
         Instant createdAt,
-        boolean read
-) {
-}
+        boolean read) {}

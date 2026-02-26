@@ -4,14 +4,13 @@ import com.pricealert.alertapi.domain.alert.Alert;
 import com.pricealert.alertapi.domain.alert.AlertRepository;
 import com.pricealert.alertapi.infrastructure.db.alert.mapper.AlertEntityMapper;
 import com.pricealert.common.event.AlertStatus;
+import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -36,8 +35,10 @@ public class AlertRepositoryAdapter implements AlertRepository {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<Alert> findByUserIdAndOptionalFilters(String userId, AlertStatus status, String symbol, Pageable pageable) {
-        return jpaRepository.findByUserIdAndOptionalFilters(userId, status, symbol, pageable)
+    public Page<Alert> findByUserIdAndOptionalFilters(
+            String userId, AlertStatus status, String symbol, Pageable pageable) {
+        return jpaRepository
+                .findByUserIdAndOptionalFilters(userId, status, symbol, pageable)
                 .map(mapper::toDomain);
     }
 
@@ -58,8 +59,6 @@ public class AlertRepositoryAdapter implements AlertRepository {
     @Override
     @Transactional(readOnly = true)
     public List<Alert> findByStatus(AlertStatus status) {
-        return jpaRepository.findByStatus(status).stream()
-                .map(mapper::toDomain)
-                .toList();
+        return jpaRepository.findByStatus(status).stream().map(mapper::toDomain).toList();
     }
 }

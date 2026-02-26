@@ -86,10 +86,10 @@ ZGC (Java 21+) has sub-millisecond pause times — critical for a latency-sensit
 
 | Service | -Xms | -Xmx |
 |---|---|---|
-| evaluator | 256m | 512m |
+| evaluator | 256m | 1024m |
 | alert-api | 128m | 256m |
 | tick-ingestor | 128m | 256m |
-| notification-persister | 128m | 256m |
+| notification-persister | 128m | 512m |
 | market-feed-simulator | 64m | 128m |
 
 ### 1.4 HikariCP connection pool

@@ -1,8 +1,9 @@
 package com.pricealert.alertapi.application.controller.auth;
 
 import com.pricealert.alertapi.application.security.JwtAuthenticationFilter;
-import com.pricealert.alertapi.application.security.JwtClaims;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Duration;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -11,9 +12,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.time.Duration;
-import java.time.Instant;
 
 @Slf4j
 @RestController
@@ -40,12 +38,18 @@ public class AuthController {
             return ResponseEntity.badRequest().build();
         }
 
-        var ttl = claims.exp() != null
-                ? Duration.ofSeconds(Math.max(0, claims.exp() - Instant.now().getEpochSecond()))
-                : Duration.ofHours(1);
+        var ttl =
+                claims.exp() != null
+                        ? Duration.ofSeconds(
+                                Math.max(0, claims.exp() - Instant.now().getEpochSecond()))
+                        : Duration.ofHours(1);
 
         redisTemplate.opsForValue().set("blacklist:" + claims.jti(), "1", ttl);
-        log.info("Token revoked for user {} (jti={}, ttl={}s)", claims.sub(), claims.jti(), ttl.toSeconds());
+        log.info(
+                "Token revoked for user {} (jti={}, ttl={}s)",
+                claims.sub(),
+                claims.jti(),
+                ttl.toSeconds());
 
         return ResponseEntity.noContent().build();
     }

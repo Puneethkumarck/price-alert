@@ -50,8 +50,8 @@ evaluator:
 
 namastack:
   outbox:
-    poll-interval: 1000
-    batch-size: 50
+    poll-interval: 200
+    batch-size: 500
     jdbc:
       table-prefix: "evaluator_"
       schema-initialization:
@@ -78,6 +78,18 @@ management:
   otlp:
     tracing:
       endpoint: http://tempo:4318/v1/traces
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    hikari:
+      jdbc-url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/price_alerts}
+    replica:
+      hikari:
+        jdbc-url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/price_alerts}
 
 ---
 spring:

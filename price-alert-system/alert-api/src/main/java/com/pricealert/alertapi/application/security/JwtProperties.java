@@ -6,7 +6,4 @@ import org.springframework.validation.annotation.Validated;
 
 @Validated
 @ConfigurationProperties(prefix = "jwt")
-public record JwtProperties(
-        @NotBlank String secret
-) {
-}
+public record JwtProperties(@NotBlank String secret) {}

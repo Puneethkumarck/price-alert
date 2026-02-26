@@ -19,8 +19,7 @@ public class AlertChangeConsumer {
     @KafkaListener(
             topics = KafkaTopics.ALERT_CHANGES,
             groupId = "evaluator-changes",
-            containerFactory = "alertChangeListenerContainerFactory"
-    )
+            containerFactory = "alertChangeListenerContainerFactory")
     public void onAlertChange(AlertChange change) {
         switch (change.eventType()) {
             case CREATED -> handleCreated(change);
@@ -48,7 +47,10 @@ public class AlertChangeConsumer {
     }
 
     private void handleReset(AlertChange change) {
-        log.debug("Re-adding alert {} for {} to index (daily reset)", change.alertId(), change.symbol());
+        log.debug(
+                "Re-adding alert {} for {} to index (daily reset)",
+                change.alertId(),
+                change.symbol());
         indexManager.removeAlert(change.alertId(), change.symbol());
         indexManager.addAlert(toEntry(change));
     }

@@ -5,8 +5,8 @@ import com.pricealert.alertapi.infrastructure.db.notification.NotificationJpaRep
 import com.pricealert.alertapi.infrastructure.db.triggerlog.AlertTriggerLogJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
@@ -22,33 +22,34 @@ public abstract class BaseIntegrationTest {
 
     protected static final PostgreSQLContainer<?> postgres;
     protected static final KafkaContainer kafka;
+
     @SuppressWarnings("resource")
     static final GenericContainer<?> redis;
 
     static {
-        postgres = new PostgreSQLContainer<>(DockerImageName.parse("postgres:17-alpine"))
-                .withDatabaseName("price_alerts_test")
-                .withUsername("test")
-                .withPassword("test");
+        postgres =
+                new PostgreSQLContainer<>(DockerImageName.parse("postgres:17-alpine"))
+                        .withDatabaseName("price_alerts_test")
+                        .withUsername("test")
+                        .withPassword("test");
         postgres.start();
 
-        kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.7.1"))
-                .withKraft();
+        kafka =
+                new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.7.1"))
+                        .withKraft();
         kafka.start();
 
-        redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
-                .withExposedPorts(6379);
+        redis =
+                new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+                        .withExposedPorts(6379);
         redis.start();
     }
 
-    @Autowired
-    private AlertTriggerLogJpaRepository triggerLogJpaRepository;
+    @Autowired private AlertTriggerLogJpaRepository triggerLogJpaRepository;
 
-    @Autowired
-    private NotificationJpaRepository notificationJpaRepository;
+    @Autowired private NotificationJpaRepository notificationJpaRepository;
 
-    @Autowired
-    private AlertJpaRepository alertJpaRepository;
+    @Autowired private AlertJpaRepository alertJpaRepository;
 
     @BeforeEach
     void cleanDatabase() {

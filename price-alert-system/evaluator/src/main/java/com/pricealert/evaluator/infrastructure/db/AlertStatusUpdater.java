@@ -22,15 +22,20 @@ public class AlertStatusUpdater {
     @Transactional
     public void markTriggeredToday(String alertId) {
         try {
-            var updated = repository.updateStatusByIdAndCurrentStatus(
-                    alertId, AlertStatus.TRIGGERED_TODAY, AlertStatus.ACTIVE);
+            var updated =
+                    repository.updateStatusByIdAndCurrentStatus(
+                            alertId, AlertStatus.TRIGGERED_TODAY, AlertStatus.ACTIVE);
             if (updated == 0) {
-                log.debug("Skipped status update for alert {} (not ACTIVE — Layer 2 dedup)", alertId);
+                log.debug(
+                        "Skipped status update for alert {} (not ACTIVE — Layer 2 dedup)", alertId);
             } else {
                 log.debug("Marked alert {} as TRIGGERED_TODAY", alertId);
             }
         } catch (Exception e) {
-            log.warn("Failed to update alert {} status to TRIGGERED_TODAY: {}", alertId, e.getMessage());
+            log.warn(
+                    "Failed to update alert {} status to TRIGGERED_TODAY: {}",
+                    alertId,
+                    e.getMessage());
         }
     }
 }

@@ -1,10 +1,9 @@
 package com.pricealert.common.id;
 
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
-
 import java.security.SecureRandom;
 import java.time.Instant;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 
 /**
  * Generates ULIDs (Universally Unique Lexicographically Sortable Identifiers).

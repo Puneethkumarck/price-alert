@@ -1,7 +1,6 @@
 package com.pricealert.alertapi.application.controller.notification;
 
 import com.pricealert.common.event.Direction;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 
@@ -16,6 +15,4 @@ public record NotificationResponse(
         Direction direction,
         String note,
         Instant createdAt,
-        boolean read
-) {
-}
+        boolean read) {}

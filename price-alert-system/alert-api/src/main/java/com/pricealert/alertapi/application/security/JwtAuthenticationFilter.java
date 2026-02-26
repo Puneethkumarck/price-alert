@@ -4,6 +4,12 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -11,13 +17,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-import java.util.List;
 
 @Slf4j
 @Component
@@ -28,7 +27,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final StringRedisTemplate redisTemplate;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(
+            HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
         var authHeader = request.getHeader("Authorization");
@@ -109,10 +109,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             var end = trimmed.indexOf('"', 1);
             return trimmed.substring(1, end);
         }
-        var end = Math.min(
-                trimmed.indexOf(',') >= 0 ? trimmed.indexOf(',') : trimmed.length(),
-                trimmed.indexOf('}') >= 0 ? trimmed.indexOf('}') : trimmed.length()
-        );
+        var end =
+                Math.min(
+                        trimmed.indexOf(',') >= 0 ? trimmed.indexOf(',') : trimmed.length(),
+                        trimmed.indexOf('}') >= 0 ? trimmed.indexOf('}') : trimmed.length());
         return trimmed.substring(0, end).trim();
     }
 }

@@ -2,10 +2,9 @@ package com.pricealert.alertapi.domain.alert;
 
 import com.pricealert.common.event.AlertStatus;
 import com.pricealert.common.event.Direction;
-import lombok.Builder;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import lombok.Builder;
 
 @Builder(toBuilder = true)
 public record Alert(
@@ -19,6 +18,4 @@ public record Alert(
         Instant createdAt,
         Instant updatedAt,
         Instant lastTriggeredAt,
-        BigDecimal lastTriggerPrice
-) {
-}
+        BigDecimal lastTriggerPrice) {}

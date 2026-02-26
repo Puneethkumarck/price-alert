@@ -1,9 +1,8 @@
 package com.pricealert.evaluator.domain.evaluation;
 
 import com.pricealert.common.event.Direction;
-import org.junit.jupiter.api.BeforeEach;
-
 import java.math.BigDecimal;
+import org.junit.jupiter.api.BeforeEach;
 
 public abstract class SymbolAlertIndexBaseTest {
 

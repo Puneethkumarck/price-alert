@@ -254,6 +254,141 @@ Flyway migration V4 creates all 9 prefixed tables.
 
 ---
 
+## 13. Evaluator OOM Kill When Loading 1M Alerts on Warm-Up
+
+**Symptom:** Evaluator process killed by OOM on startup when the `alerts` table has ~1M ACTIVE rows:
+```
+java.lang.OutOfMemoryError: Java heap space
+  at org.hibernate.engine.internal.StatefulPersistenceContext.addEntity(...)
+```
+Or silent OOM kill at container level (`exit code 137`) at `-Xmx512m`.
+
+**Root cause:** The JPA-based warm-up opened a single long-running @Transactional(readOnly = true) session. Each findByStatus(ACTIVE, PageRequest) call loaded a full page of AlertRow JPA entities into Hibernate's
+StatefulPersistenceContext identity map. Even with entityManager.clear() after each page, the entities from the current page are still in managed state during batch.forEach(...) — so at 10,000 rows/page × ~400
+bytes/entity the identity map peaks at ~4MB per page, and the accumulated GC pressure across 100 pages (1M rows) causes OOM at -Xmx512m.
+
+**Fix** — switched to JdbcTemplate.query() with fetchSize:
+- JdbcTemplate uses a JDBC cursor (server-side paging via PostgreSQL's setFetchSize) — rows are fetched from the DB in batches but never accumulate in a JVM-side identity map
+- Each row is mapped from ResultSet → AlertEntry record → immediately added to the index and GC-eligible
+- No EntityManager, no @Transactional, no JPA persistence context at all on the warm-up path
+- Heap usage stays constant at ~1 batch worth of AlertEntry records regardless of total row count
+
+**Root cause:** `WarmUpService` used Spring Data JPA pagination (`repository.findByStatus(ACTIVE, PageRequest)`). Each page call loads `AlertRow` JPA entities into Hibernate's `StatefulPersistenceContext` identity map. Even with `entityManager.clear()` called after each page, the entities for the **current page** accumulate in managed state during `batch.forEach(...)` before `clear()` runs. At 10,000 rows/page × ~400 bytes/entity the identity map peaks per page, and across 100 pages (1M rows) the cumulative GC pressure causes OOM at `-Xmx512m`. Additionally, `@Transactional(readOnly = true)` on an `@EventListener(ApplicationReadyEvent.class)` method holds a single long-running Hibernate session open for the entire load.
+
+**Fix:** Replaced JPA pagination with `JdbcTemplate.query()` + `setFetchSize()`. JDBC cursor streaming bypasses the persistence context entirely — rows are mapped directly from `ResultSet` to `AlertEntry` records and become immediately GC-eligible:
+
+```java
+// BEFORE (OOM at 1M rows)
+@EventListener(ApplicationReadyEvent.class)
+@Transactional(readOnly = true)
+public void warmUp() {
+    Page<AlertRow> batch;
+    do {
+        batch = repository.findByStatus(ACTIVE, PageRequest.of(page++, batchSize));
+        batch.forEach(row -> indexManager.addAlert(...)); // row held in identity map
+        entityManager.clear();                            // too late — already OOM
+    } while (batch.hasNext());
+}
+
+// AFTER (constant heap regardless of row count)
+@EventListener(ApplicationReadyEvent.class)
+public void warmUp() {
+    jdbcTemplate.setFetchSize(properties.warmup().batchSize()); // JDBC cursor batching
+    jdbcTemplate.query(
+        "SELECT id, user_id, symbol, threshold_price, direction, note FROM alerts WHERE status = 'ACTIVE'",
+        rs -> {
+            indexManager.addAlert(AlertEntry.builder()
+                .alertId(rs.getString("id"))
+                // ... map fields directly from ResultSet
+                .build());
+            // AlertEntry is immediately GC-eligible — no identity map
+        });
+}
+```
+
+**Why `setFetchSize` matters:** PostgreSQL JDBC driver defaults to fetching the entire result set in one round-trip (`fetchSize=0`). Setting it to e.g. `10000` enables server-side cursor batching so only one batch of raw JDBC rows is in memory at a time.
+
+**Key takeaway:** Never use JPA/Spring Data for bulk read-only loads with unbounded row counts. Use `JdbcTemplate` with `fetchSize` for streaming. Drop `@Transactional`, `EntityManager`, and the JPA repository from the warm-up path.
+
+**File:** `evaluator/.../infrastructure/db/WarmUpService.java`
+
+---
+
+## 14. ConcurrentModificationException in WarmUpService at 800K+ Alerts
+
+**Symptom:** Evaluator crashes during warm-up at startup with `Application run failed`:
+```
+java.util.ConcurrentModificationException: null
+  at java.util.TreeMap.callMappingFunctionWithCheck(...)
+  at java.util.TreeMap.computeIfAbsent(...)
+  at com.pricealert.evaluator.domain.evaluation.SymbolAlertIndex.addAlert(SymbolAlertIndex.java:21)
+  at com.pricealert.evaluator.domain.evaluation.AlertIndexManager.addAlert(AlertIndexManager.java:21)
+  at com.pricealert.evaluator.infrastructure.db.WarmUpService.lambda$warmUp$0(WarmUpService.java:38)
+```
+
+Container shows `Status=running` and `OOMKilled=false` — it is not an OOM. The evaluator
+restarts and the load-test warmup health check times out after 300 seconds showing
+`health=DOWN warmup_signals=4`.
+
+**Root cause:** Two threads race on the same `SymbolAlertIndex` `TreeMap` simultaneously:
+
+1. **Warm-up thread (`main`)** — `WarmUpService.warmUp()` streams rows from DB and calls
+   `SymbolAlertIndex.addAlert()` → `TreeMap.computeIfAbsent()` on `aboveAlerts` / `belowAlerts`
+2. **Kafka consumer thread** — `alertChangeListenerContainerFactory` and
+   `marketTickListenerContainerFactory` use `autoStartup=true` (Spring default). Kafka
+   listeners start concurrently with `ApplicationReadyEvent` processing. When the first
+   `AlertChange` (CREATED) event arrives it also calls `addAlert()` on the same `TreeMap`
+   from a different thread.
+
+`TreeMap` is not thread-safe. `computeIfAbsent` internally iterates the tree; a concurrent
+structural modification throws `ConcurrentModificationException`.
+
+This only surfaces at 800K+ alerts because warm-up takes ~2.5 seconds at that scale — long
+enough for Kafka consumers to start, join their consumer group, and receive their first
+messages before warm-up finishes. At 500K (warm-up ~1.5s) the race window is narrower and
+was not observed.
+
+**Why the `SymbolAlertIndex` is not protected by a lock:** Lock-free design is intentional
+for the runtime evaluation path (P3 improvement) — each Kafka partition is assigned to
+exactly one consumer thread, so no two threads ever access the same `SymbolAlertIndex`
+simultaneously at runtime. The race only exists during the warm-up phase when the main
+thread and Kafka consumer threads overlap.
+
+**Fix:** Set `autoStartup=false` on both Kafka listener container factories so no consumer
+thread starts until warm-up explicitly starts them:
+
+```java
+// KafkaConsumerConfig.java
+factory.setAutoStartup(false);   // added to both marketTick and alertChange factories
+```
+
+Then start all listeners at the end of `WarmUpService.warmUp()`, after the index is fully
+built:
+
+```java
+// WarmUpService.java
+@EventListener(ApplicationReadyEvent.class)
+public void warmUp() {
+    // ... stream all alerts into index ...
+    log.info("Evaluator warm-up complete: loaded {} alerts across {} symbols", ...);
+
+    // Index fully built — now safe to start Kafka consumers
+    kafkaListenerEndpointRegistry.start();
+}
+```
+
+**Files:**
+- `evaluator/.../application/config/KafkaConsumerConfig.java` — add `factory.setAutoStartup(false)`
+- `evaluator/.../infrastructure/db/WarmUpService.java` — inject `KafkaListenerEndpointRegistry`, call `.start()` after warm-up
+
+**Prevention:** Whenever a service builds in-memory state from DB at startup and then
+consumes a Kafka changelog for the same data, always start Kafka listeners **after** the
+initial load is complete. Use `autoStartup=false` + explicit `registry.start()` rather than
+relying on the `ApplicationReadyEvent` ordering, which does not guarantee warm-up completes
+before Kafka container auto-start.
+
+---
+
 ## Quick Diagnostic Commands
 
 ```bash

@@ -1,10 +1,9 @@
 package com.pricealert.alertapi.domain.triggerlog;
 
-import lombok.Builder;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import lombok.Builder;
 
 @Builder(toBuilder = true)
 public record AlertTriggerLog(
@@ -16,6 +15,4 @@ public record AlertTriggerLog(
         BigDecimal triggerPrice,
         Instant tickTimestamp,
         Instant triggeredAt,
-        LocalDate tradingDate
-) {
-}
+        LocalDate tradingDate) {}

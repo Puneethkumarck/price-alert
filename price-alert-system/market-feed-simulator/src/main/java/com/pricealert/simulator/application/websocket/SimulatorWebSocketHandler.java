@@ -1,6 +1,11 @@
 package com.pricealert.simulator.application.websocket;
 
 import com.pricealert.simulator.domain.registry.SymbolRegistry;
+import java.io.IOException;
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -9,12 +14,6 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-
-import java.io.IOException;
-import java.util.Collections;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArraySet;
 
 @Slf4j
 @Component
@@ -35,7 +34,8 @@ public class SimulatorWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+    protected void handleTextMessage(WebSocketSession session, TextMessage message)
+            throws Exception {
         var node = objectMapper.readTree(message.getPayload());
         var action = node.path("action").asText("");
 
@@ -43,7 +43,9 @@ public class SimulatorWebSocketHandler extends TextWebSocketHandler {
             var symbols = parseSymbols(node);
             var subscription = new ClientSubscription(session, symbols);
             subscriptions.add(subscription);
-            log.info("Client {} subscribed to {} symbols", session.getId(),
+            log.info(
+                    "Client {} subscribed to {} symbols",
+                    session.getId(),
                     symbols.isEmpty() ? "ALL" : symbols.size());
         } else if ("unsubscribe".equalsIgnoreCase(action)) {
             subscriptions.removeIf(s -> s.session().equals(session));

@@ -23,10 +23,17 @@ public class NotificationPersistenceService {
         // Check if notification was actually inserted (not a duplicate)
         var inserted = notificationPort.existsByIdempotencyKey(idempotencyKey);
         if (inserted) {
-            log.info("notification.persisted: alert_id={}, user_id={}, symbol={}, trigger_price={}",
-                    trigger.alertId(), trigger.userId(), trigger.symbol(), trigger.triggerPrice());
+            log.info(
+                    "notification.persisted: alert_id={}, user_id={}, symbol={}, trigger_price={}",
+                    trigger.alertId(),
+                    trigger.userId(),
+                    trigger.symbol(),
+                    trigger.triggerPrice());
         } else {
-            log.debug("Duplicate notification skipped for alert {} on {}", trigger.alertId(), trigger.tradingDate());
+            log.debug(
+                    "Duplicate notification skipped for alert {} on {}",
+                    trigger.alertId(),
+                    trigger.tradingDate());
         }
         return inserted;
     }

@@ -10,20 +10,27 @@ class ArchitectureTest {
 
     private static final String BASE_PACKAGE = "com.pricealert.evaluator";
 
-    private final JavaClasses classes = new ClassFileImporter()
-            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .importPackages(BASE_PACKAGE);
+    private final JavaClasses classes =
+            new ClassFileImporter()
+                    .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                    .importPackages(BASE_PACKAGE);
 
     @Test
     void shouldEnforceHexagonalLayerDependencies() {
         Architectures.layeredArchitecture()
                 .consideringOnlyDependenciesInLayers()
-                .layer("Application").definedBy(BASE_PACKAGE + ".application..")
-                .layer("Domain").definedBy(BASE_PACKAGE + ".domain..")
-                .layer("Infrastructure").definedBy(BASE_PACKAGE + ".infrastructure..")
-                .whereLayer("Domain").mayNotAccessAnyLayer()
-                .whereLayer("Application").mayOnlyAccessLayers("Domain", "Infrastructure")
-                .whereLayer("Infrastructure").mayOnlyAccessLayers("Domain", "Application")
+                .layer("Application")
+                .definedBy(BASE_PACKAGE + ".application..")
+                .layer("Domain")
+                .definedBy(BASE_PACKAGE + ".domain..")
+                .layer("Infrastructure")
+                .definedBy(BASE_PACKAGE + ".infrastructure..")
+                .whereLayer("Domain")
+                .mayNotAccessAnyLayer()
+                .whereLayer("Application")
+                .mayOnlyAccessLayers("Domain", "Infrastructure")
+                .whereLayer("Infrastructure")
+                .mayOnlyAccessLayers("Domain", "Application")
                 .check(classes);
     }
 }

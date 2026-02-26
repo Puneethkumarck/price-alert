@@ -12,14 +12,7 @@ public record SimulatorProperties(
         @Min(1) long tickIntervalMs,
         @NotBlank String symbolsFile,
         double volatility,
-        MarketHours marketHours
-) {
+        MarketHours marketHours) {
 
-    public record MarketHours(
-            String open,
-            String close,
-            String timezone,
-            boolean respectHours
-    ) {
-    }
+    public record MarketHours(String open, String close, String timezone, boolean respectHours) {}
 }

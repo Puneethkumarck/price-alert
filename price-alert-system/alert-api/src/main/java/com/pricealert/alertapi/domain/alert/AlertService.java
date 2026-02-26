@@ -7,14 +7,13 @@ import com.pricealert.common.event.AlertChangeType;
 import com.pricealert.common.event.AlertStatus;
 import com.pricealert.common.event.Direction;
 import com.pricealert.common.id.UlidGenerator;
+import java.math.BigDecimal;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-
-import java.math.BigDecimal;
-import java.time.Instant;
 
 @Slf4j
 @Service
@@ -24,19 +23,25 @@ public class AlertService {
     private final AlertRepository alertRepository;
     private final AlertEventPublisher eventPublisher;
 
-    public Alert createAlert(String userId, String symbol, BigDecimal thresholdPrice, Direction direction, String note) {
+    public Alert createAlert(
+            String userId,
+            String symbol,
+            BigDecimal thresholdPrice,
+            Direction direction,
+            String note) {
         var now = Instant.now();
-        var alert = Alert.builder()
-                .id(UlidGenerator.generate())
-                .userId(userId)
-                .symbol(symbol)
-                .thresholdPrice(thresholdPrice)
-                .direction(direction)
-                .status(AlertStatus.ACTIVE)
-                .note(note)
-                .createdAt(now)
-                .updatedAt(now)
-                .build();
+        var alert =
+                Alert.builder()
+                        .id(UlidGenerator.generate())
+                        .userId(userId)
+                        .symbol(symbol)
+                        .thresholdPrice(thresholdPrice)
+                        .direction(direction)
+                        .status(AlertStatus.ACTIVE)
+                        .note(note)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build();
 
         var saved = alertRepository.save(alert);
         eventPublisher.publish(toAlertChange(saved, AlertChangeType.CREATED));
@@ -45,27 +50,37 @@ public class AlertService {
     }
 
     public Alert getAlert(String alertId, String userId) {
-        var alert = alertRepository.findById(alertId)
-                .orElseThrow(() -> AlertNotFoundException.of(alertId));
+        var alert =
+                alertRepository
+                        .findById(alertId)
+                        .orElseThrow(() -> AlertNotFoundException.of(alertId));
         if (!alert.userId().equals(userId)) {
             throw AlertNotOwnedException.of(alertId, userId);
         }
         return alert;
     }
 
-    public Page<Alert> listAlerts(String userId, AlertStatus status, String symbol, Pageable pageable) {
+    public Page<Alert> listAlerts(
+            String userId, AlertStatus status, String symbol, Pageable pageable) {
         return alertRepository.findByUserIdAndOptionalFilters(userId, status, symbol, pageable);
     }
 
-    public Alert updateAlert(String alertId, String userId, BigDecimal thresholdPrice, Direction direction, String note) {
+    public Alert updateAlert(
+            String alertId,
+            String userId,
+            BigDecimal thresholdPrice,
+            Direction direction,
+            String note) {
         var alert = getAlert(alertId, userId);
 
-        var updated = alert.toBuilder()
-                .thresholdPrice(thresholdPrice != null ? thresholdPrice : alert.thresholdPrice())
-                .direction(direction != null ? direction : alert.direction())
-                .note(note != null ? note : alert.note())
-                .updatedAt(Instant.now())
-                .build();
+        var updated =
+                alert.toBuilder()
+                        .thresholdPrice(
+                                thresholdPrice != null ? thresholdPrice : alert.thresholdPrice())
+                        .direction(direction != null ? direction : alert.direction())
+                        .note(note != null ? note : alert.note())
+                        .updatedAt(Instant.now())
+                        .build();
 
         var saved = alertRepository.save(updated);
         eventPublisher.publish(toAlertChange(saved, AlertChangeType.UPDATED));
@@ -76,10 +91,8 @@ public class AlertService {
     public void deleteAlert(String alertId, String userId) {
         var alert = getAlert(alertId, userId);
 
-        var deleted = alert.toBuilder()
-                .status(AlertStatus.DELETED)
-                .updatedAt(Instant.now())
-                .build();
+        var deleted =
+                alert.toBuilder().status(AlertStatus.DELETED).updatedAt(Instant.now()).build();
 
         alertRepository.save(deleted);
         eventPublisher.publish(toAlertChange(deleted, AlertChangeType.DELETED));

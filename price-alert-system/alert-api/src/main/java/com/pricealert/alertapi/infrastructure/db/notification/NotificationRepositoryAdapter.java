@@ -19,7 +19,6 @@ public class NotificationRepositoryAdapter implements NotificationRepository {
     @Override
     @Transactional(readOnly = true)
     public Page<Notification> findByUserId(String userId, Pageable pageable) {
-        return jpaRepository.findByUserId(userId, pageable)
-                .map(mapper::toDomain);
+        return jpaRepository.findByUserId(userId, pageable).map(mapper::toDomain);
     }
 }

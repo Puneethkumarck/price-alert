@@ -1,6 +1,8 @@
 package com.pricealert.evaluator.application.config;
 
 import com.zaxxer.hikari.HikariDataSource;
+import java.util.Map;
+import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -8,9 +10,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-
-import javax.sql.DataSource;
-import java.util.Map;
 
 @Configuration
 public class DataSourceConfig {
@@ -32,14 +31,15 @@ public class DataSourceConfig {
     public DataSource routingDataSource(
             @Qualifier("primaryDataSource") DataSource primary,
             @Qualifier("replicaDataSource") DataSource replica) {
-        var routing = new AbstractRoutingDataSource() {
-            @Override
-            protected Object determineCurrentLookupKey() {
-                return TransactionSynchronizationManager.isCurrentTransactionReadOnly()
-                        ? "replica"
-                        : "primary";
-            }
-        };
+        var routing =
+                new AbstractRoutingDataSource() {
+                    @Override
+                    protected Object determineCurrentLookupKey() {
+                        return TransactionSynchronizationManager.isCurrentTransactionReadOnly()
+                                ? "replica"
+                                : "primary";
+                    }
+                };
         routing.setTargetDataSources(Map.of("primary", primary, "replica", replica));
         routing.setDefaultTargetDataSource(primary);
         routing.afterPropertiesSet();

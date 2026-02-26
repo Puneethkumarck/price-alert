@@ -16,17 +16,18 @@ public class AlertTriggerLogRepositoryAdapter implements AlertTriggerLogPort {
     @Override
     @Transactional
     public void insertIdempotent(AlertTrigger trigger) {
-        var row = AlertTriggerLogRow.builder()
-                .id(UlidGenerator.generate())
-                .alertId(trigger.alertId())
-                .userId(trigger.userId())
-                .symbol(trigger.symbol())
-                .thresholdPrice(trigger.thresholdPrice())
-                .triggerPrice(trigger.triggerPrice())
-                .tickTimestamp(trigger.tickTimestamp())
-                .triggeredAt(trigger.triggeredAt())
-                .tradingDate(trigger.tradingDate())
-                .build();
+        var row =
+                AlertTriggerLogRow.builder()
+                        .id(UlidGenerator.generate())
+                        .alertId(trigger.alertId())
+                        .userId(trigger.userId())
+                        .symbol(trigger.symbol())
+                        .thresholdPrice(trigger.thresholdPrice())
+                        .triggerPrice(trigger.triggerPrice())
+                        .tickTimestamp(trigger.tickTimestamp())
+                        .triggeredAt(trigger.triggeredAt())
+                        .tradingDate(trigger.tradingDate())
+                        .build();
         jpaRepository.insertIdempotent(row);
     }
 }

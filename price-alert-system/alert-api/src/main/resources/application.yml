@@ -84,6 +84,18 @@ management:
 spring:
   config:
     activate:
+      on-profile: docker
+  datasource:
+    hikari:
+      jdbc-url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/price_alerts}
+    replica:
+      hikari:
+        jdbc-url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/price_alerts}
+
+---
+spring:
+  config:
+    activate:
       on-profile: production
   datasource:
     replica:

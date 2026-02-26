@@ -24,10 +24,10 @@ public class NotificationController {
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public Page<NotificationResponse> listNotifications(
-            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+                    Pageable pageable,
             Authentication auth) {
         var userId = auth.getName();
-        return notificationRepository.findByUserId(userId, pageable)
-                .map(mapper::toResponse);
+        return notificationRepository.findByUserId(userId, pageable).map(mapper::toResponse);
     }
 }

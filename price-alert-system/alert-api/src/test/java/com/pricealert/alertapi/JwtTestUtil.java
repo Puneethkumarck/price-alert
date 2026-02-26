@@ -1,23 +1,32 @@
 package com.pricealert.alertapi;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * Generates valid JWT tokens for integration tests using HMAC-SHA256.
  */
 public final class JwtTestUtil {
 
-    private JwtTestUtil() {
-    }
+    private JwtTestUtil() {}
 
     public static String generateToken(String userId, String secret) {
-        var header = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString("{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
-        var payload = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(("{\"sub\":\"" + userId + "\",\"iat\":1700000000,\"exp\":9999999999}").getBytes(StandardCharsets.UTF_8));
+        var header =
+                Base64.getUrlEncoder()
+                        .withoutPadding()
+                        .encodeToString(
+                                "{\"alg\":\"HS256\",\"typ\":\"JWT\"}"
+                                        .getBytes(StandardCharsets.UTF_8));
+        var payload =
+                Base64.getUrlEncoder()
+                        .withoutPadding()
+                        .encodeToString(
+                                ("{\"sub\":\""
+                                                + userId
+                                                + "\",\"iat\":1700000000,\"exp\":9999999999}")
+                                        .getBytes(StandardCharsets.UTF_8));
         var signature = hmacSha256(header + "." + payload, secret);
         return header + "." + payload + "." + signature;
     }

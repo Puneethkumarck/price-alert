@@ -216,10 +216,19 @@ tf_destroy_clean() {
     fi
   fi
 
-  # Remove prevent_destroy protection temporarily by targeting the volume after main destroy
-  local approve_flag="-auto-approve"
-  terraform destroy -var-file="$TFVARS" -input=false $approve_flag || true
-  # Force-remove the protected volume
+  # Step 1: Stop and remove the postgres container explicitly so Docker releases
+  # its reference to the pgdata volume. terraform destroy aborts when it hits the
+  # prevent_destroy lifecycle on docker_volume.pgdata, which can leave the container
+  # half-removed and the volume still referenced — causing docker volume rm to fail.
+  info "Stopping postgres container to release pgdata volume reference..."
+  docker rm -f postgres 2>/dev/null && ok "postgres container removed" || info "postgres container already gone"
+
+  # Step 2: Destroy all remaining Terraform-managed resources. The destroy will
+  # still error on docker_volume.pgdata (prevent_destroy = true) but all containers
+  # will have been torn down by this point.
+  terraform destroy -var-file="$TFVARS" -input=false -auto-approve || true
+
+  # Step 3: Now that no container holds a reference, remove the volume directly.
   docker volume rm price-alert-pgdata 2>/dev/null && ok "pgdata volume removed" || warn "pgdata volume already removed or not found"
 }
 
@@ -234,7 +243,7 @@ tf_outputs() {
 
 show_containers() {
   header "Container Status"
-  local containers=("kafka" "postgres" "redis" "alert-api" "market-feed-simulator" "tick-ingestor" "evaluator" "notification-persister" "prometheus" "grafana" "loki" "promtail" "tempo")
+  local containers=("kafka" "postgres" "redis" "alert-api" "market-feed-simulator" "tick-ingestor" "evaluator" "notification-persister" "notification-persister-2" "prometheus" "grafana" "loki" "promtail" "tempo")
   printf "  %-30s %-15s %s\n" "CONTAINER" "STATUS" "PORTS"
   printf "  %-30s %-15s %s\n" "---------" "------" "-----"
   for c in "${containers[@]}"; do
@@ -292,7 +301,7 @@ wait_healthy() {
   done
 
   # Check consumer services (no healthcheck — just verify running)
-  for svc in "evaluator" "notification-persister" "prometheus" "grafana" "loki" "promtail" "tempo"; do
+  for svc in "evaluator" "notification-persister" "notification-persister-2" "prometheus" "grafana" "loki" "promtail" "tempo"; do
     local status
     status=$(docker inspect --format='{{.State.Status}}' "$svc" 2>/dev/null || echo "not found")
     if [ "$status" = "running" ]; then

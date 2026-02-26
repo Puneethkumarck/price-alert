@@ -1,0 +1,191 @@
+{
+  "version": 4,
+  "terraform_version": "1.5.7",
+  "serial": 169,
+  "lineage": "0e0318b0-47d9-dc78-e85d-fc51fd3befde",
+  "outputs": {
+    "alert_api_health": {
+      "value": "http://localhost:8080/actuator/health",
+      "type": "string"
+    },
+    "alert_api_url": {
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    "grafana_url": {
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    "kafka_external_bootstrap": {
+      "value": "localhost:9092",
+      "type": "string"
+    },
+    "loki_url": {
+      "value": "http://localhost:3100",
+      "type": "string"
+    },
+    "market_feed_simulator_ws": {
+      "value": "ws://localhost:8085/v1/feed",
+      "type": "string"
+    },
+    "postgres_endpoint": {
+      "value": "localhost:5432",
+      "type": "string"
+    },
+    "prometheus_url": {
+      "value": "http://localhost:9090",
+      "type": "string"
+    },
+    "redis_endpoint": {
+      "value": "localhost:6379",
+      "type": "string"
+    },
+    "tempo_url": {
+      "value": "http://localhost:3200",
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "module": "module.infrastructure",
+      "mode": "managed",
+      "type": "docker_image",
+      "name": "kafka",
+      "provider": "provider[\"registry.terraform.io/kreuzwerker/docker\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "build": [],
+            "force_remove": null,
+            "id": "sha256:7c2b3f20cec5b5c41e29bc3107e51689b45844b8433289aea4a9884a5b1097e1apache/kafka:3.9.0",
+            "image_id": "sha256:7c2b3f20cec5b5c41e29bc3107e51689b45844b8433289aea4a9884a5b1097e1",
+            "keep_locally": null,
+            "name": "apache/kafka:3.9.0",
+            "platform": null,
+            "pull_triggers": null,
+            "repo_digest": "apache/kafka@sha256:fbc7d7c428e3755cf36518d4976596002477e4c052d1f80b5b9eafd06d0fff2f",
+            "timeouts": null,
+            "triggers": null
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19"
+        }
+      ]
+    },
+    {
+      "module": "module.infrastructure",
+      "mode": "managed",
+      "type": "docker_image",
+      "name": "postgres",
+      "provider": "provider[\"registry.terraform.io/kreuzwerker/docker\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "build": [],
+            "force_remove": null,
+            "id": "sha256:8cd35a35f720d8e648d618cab92abba5fd0174112a97a298dfbecebf715c7957postgres:17",
+            "image_id": "sha256:8cd35a35f720d8e648d618cab92abba5fd0174112a97a298dfbecebf715c7957",
+            "keep_locally": null,
+            "name": "postgres:17",
+            "platform": null,
+            "pull_triggers": null,
+            "repo_digest": "postgres@sha256:1eada89ec2521ae0f61125f6bdaf83bbbf88a43fecda48d112a83bb92df75c36",
+            "timeouts": null,
+            "triggers": null
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19"
+        }
+      ]
+    },
+    {
+      "module": "module.infrastructure",
+      "mode": "managed",
+      "type": "docker_image",
+      "name": "redis",
+      "provider": "provider[\"registry.terraform.io/kreuzwerker/docker\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "build": [],
+            "force_remove": null,
+            "id": "sha256:49898aa0365c1577275e77a57b9ffa8a6ebd9d13eb981610a679e64185eaf0f2redis:7-alpine",
+            "image_id": "sha256:49898aa0365c1577275e77a57b9ffa8a6ebd9d13eb981610a679e64185eaf0f2",
+            "keep_locally": null,
+            "name": "redis:7-alpine",
+            "platform": null,
+            "pull_triggers": null,
+            "repo_digest": "redis@sha256:3880c8fe83f3b27f028661bfbbfc98e833c1fe30718501b598966e04a48f8c34",
+            "timeouts": null,
+            "triggers": null
+          },
+          "sensitive_attributes": [],
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19"
+        }
+      ]
+    },
+    {
+      "module": "module.infrastructure",
+      "mode": "managed",
+      "type": "docker_volume",
+      "name": "pgdata",
+      "provider": "provider[\"registry.terraform.io/kreuzwerker/docker\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "driver": "local",
+            "driver_opts": {},
+            "id": "price-alert-pgdata",
+            "labels": [],
+            "mountpoint": "/var/lib/docker/volumes/price-alert-pgdata/_data",
+            "name": "price-alert-pgdata"
+          },
+          "sensitive_attributes": [],
+          "private": "eyJzY2hlbWFfdmVyc2lvbiI6IjEifQ=="
+        }
+      ]
+    },
+    {
+      "module": "module.network",
+      "mode": "managed",
+      "type": "docker_network",
+      "name": "price_alert",
+      "provider": "provider[\"registry.terraform.io/kreuzwerker/docker\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "attachable": false,
+            "check_duplicate": null,
+            "driver": "bridge",
+            "id": "5f6f23c984e84e27954b5cc095a9727db11d4e1b062226900e5d9b7ff989654a",
+            "ingress": false,
+            "internal": false,
+            "ipam_config": [
+              {
+                "aux_address": {},
+                "gateway": "172.20.0.1",
+                "ip_range": "",
+                "subnet": "172.20.0.0/16"
+              }
+            ],
+            "ipam_driver": "default",
+            "ipam_options": {},
+            "ipv6": false,
+            "labels": [],
+            "name": "price-alert-network",
+            "options": {},
+            "scope": "local"
+          },
+          "sensitive_attributes": [],
+          "private": "eyJzY2hlbWFfdmVyc2lvbiI6IjEifQ=="
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}

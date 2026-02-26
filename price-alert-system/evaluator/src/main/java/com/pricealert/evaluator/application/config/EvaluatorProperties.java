@@ -10,6 +10,5 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "evaluator")
 public record EvaluatorProperties(@NotNull @Valid Warmup warmup) {
 
-    public record Warmup(@Min(1) int batchSize) {
-    }
+    public record Warmup(@Min(1) int batchSize) {}
 }

@@ -5,13 +5,12 @@ import com.pricealert.common.kafka.KafkaTopics;
 import com.pricealert.evaluator.domain.evaluation.EvaluationEngine;
 import com.pricealert.evaluator.infrastructure.db.AlertStatusUpdater;
 import io.micrometer.core.instrument.Counter;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Slf4j
 @Component
@@ -27,8 +26,7 @@ public class MarketTickConsumer {
     @KafkaListener(
             topics = KafkaTopics.MARKET_TICKS,
             groupId = "evaluator-ticks",
-            containerFactory = "marketTickListenerContainerFactory"
-    )
+            containerFactory = "marketTickListenerContainerFactory")
     @Transactional
     public void onMarketTicks(List<MarketTick> ticks) {
         for (var tick : ticks) {
@@ -36,9 +34,13 @@ public class MarketTickConsumer {
             ticksProcessedCounter.increment();
 
             for (var trigger : triggers) {
-                log.info("Alert {} fired for {} at {} (threshold: {}, direction: {})",
-                        trigger.alertId(), trigger.symbol(), trigger.triggerPrice(),
-                        trigger.thresholdPrice(), trigger.direction());
+                log.info(
+                        "Alert {} fired for {} at {} (threshold: {}, direction: {})",
+                        trigger.alertId(),
+                        trigger.symbol(),
+                        trigger.triggerPrice(),
+                        trigger.thresholdPrice(),
+                        trigger.direction());
 
                 triggerProducer.send(trigger);
                 statusUpdater.markTriggeredToday(trigger.alertId());

@@ -1,7 +1,6 @@
 package com.pricealert.evaluator.domain.evaluation;
 
 import com.pricealert.common.event.Direction;
-
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;

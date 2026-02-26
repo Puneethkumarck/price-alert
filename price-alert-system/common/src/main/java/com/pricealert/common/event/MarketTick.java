@@ -1,10 +1,9 @@
 package com.pricealert.common.event;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Builder;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import lombok.Builder;
 
 @Builder(toBuilder = true)
 public record MarketTick(
@@ -14,8 +13,7 @@ public record MarketTick(
         BigDecimal ask,
         long volume,
         Instant timestamp,
-        long sequence
-) {
+        long sequence) {
 
     @JsonProperty("type")
     public String type() {

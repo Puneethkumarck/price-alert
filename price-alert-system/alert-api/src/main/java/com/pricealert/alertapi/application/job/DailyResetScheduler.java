@@ -6,13 +6,12 @@ import com.pricealert.common.event.AlertChange;
 import com.pricealert.common.event.AlertChangeType;
 import com.pricealert.common.event.AlertStatus;
 import jakarta.persistence.EntityManager;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
 
 /**
  * Daily reset scheduler: TRIGGERED_TODAY → ACTIVE at market open.
@@ -49,31 +48,37 @@ public class DailyResetScheduler {
         }
 
         // Batch update: TRIGGERED_TODAY → ACTIVE
-        var updatedCount = alertRepository.updateStatusByCurrentStatus(AlertStatus.ACTIVE, AlertStatus.TRIGGERED_TODAY);
+        var updatedCount =
+                alertRepository.updateStatusByCurrentStatus(
+                        AlertStatus.ACTIVE, AlertStatus.TRIGGERED_TODAY);
 
         // Publish RESET events for each alert so evaluator re-indexes them
         for (var alert : triggeredAlerts) {
-            var event = AlertChange.builder()
-                    .eventType(AlertChangeType.RESET)
-                    .alertId(alert.id())
-                    .userId(alert.userId())
-                    .symbol(alert.symbol())
-                    .thresholdPrice(alert.thresholdPrice())
-                    .direction(alert.direction())
-                    .timestamp(Instant.now())
-                    .build();
+            var event =
+                    AlertChange.builder()
+                            .eventType(AlertChangeType.RESET)
+                            .alertId(alert.id())
+                            .userId(alert.userId())
+                            .symbol(alert.symbol())
+                            .thresholdPrice(alert.thresholdPrice())
+                            .direction(alert.direction())
+                            .timestamp(Instant.now())
+                            .build();
             eventPublisher.publish(event);
         }
 
-        log.info("Daily reset complete: {} alerts reset to ACTIVE, {} RESET events published",
-                updatedCount, triggeredAlerts.size());
+        log.info(
+                "Daily reset complete: {} alerts reset to ACTIVE, {} RESET events published",
+                updatedCount,
+                triggeredAlerts.size());
     }
 
     private boolean acquireAdvisoryLock() {
-        var result = entityManager
-                .createNativeQuery("SELECT pg_try_advisory_lock(:lockId)")
-                .setParameter("lockId", ADVISORY_LOCK_ID)
-                .getSingleResult();
+        var result =
+                entityManager
+                        .createNativeQuery("SELECT pg_try_advisory_lock(:lockId)")
+                        .setParameter("lockId", ADVISORY_LOCK_ID)
+                        .getSingleResult();
         return Boolean.TRUE.equals(result);
     }
 }

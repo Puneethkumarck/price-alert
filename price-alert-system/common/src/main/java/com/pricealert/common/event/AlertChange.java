@@ -1,10 +1,9 @@
 package com.pricealert.common.event;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Builder;
-
 import java.math.BigDecimal;
 import java.time.Instant;
+import lombok.Builder;
 
 @Builder(toBuilder = true)
 public record AlertChange(
@@ -14,6 +13,4 @@ public record AlertChange(
         String symbol,
         @JsonProperty("threshold_price") BigDecimal thresholdPrice,
         Direction direction,
-        Instant timestamp
-) {
-}
+        Instant timestamp) {}

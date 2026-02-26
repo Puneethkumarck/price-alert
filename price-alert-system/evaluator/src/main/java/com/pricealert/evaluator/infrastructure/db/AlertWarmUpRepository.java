@@ -12,6 +12,9 @@ public interface AlertWarmUpRepository extends JpaRepository<AlertRow, String> {
     Page<AlertRow> findByStatus(AlertStatus status, Pageable pageable);
 
     @Modifying
-    @Query("UPDATE AlertRow a SET a.status = :newStatus WHERE a.id = :alertId AND a.status = :currentStatus")
-    int updateStatusByIdAndCurrentStatus(String alertId, AlertStatus newStatus, AlertStatus currentStatus);
+    @Query(
+            "UPDATE AlertRow a SET a.status = :newStatus WHERE a.id = :alertId AND a.status ="
+                    + " :currentStatus")
+    int updateStatusByIdAndCurrentStatus(
+            String alertId, AlertStatus newStatus, AlertStatus currentStatus);
 }

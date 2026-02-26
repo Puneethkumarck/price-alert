@@ -59,17 +59,17 @@ resource "docker_container" "kafka_2" {
 
   env = concat(local.kafka_common_env, [
     "KAFKA_NODE_ID=2",
-    "KAFKA_LISTENERS=INTERNAL://:19092,EXTERNAL://:9093,CONTROLLER://:9093",
-    "KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka-2:19092,EXTERNAL://localhost:9093",
+    "KAFKA_LISTENERS=INTERNAL://:19092,EXTERNAL://:9095,CONTROLLER://:9093",
+    "KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka-2:19092,EXTERNAL://localhost:9095",
   ])
 
   ports {
-    internal = 9093
-    external = 9093
+    internal = 9095
+    external = 9095
   }
 
   healthcheck {
-    test         = ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9093 > /dev/null 2>&1"]
+    test         = ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9095 > /dev/null 2>&1"]
     interval     = "10s"
     timeout      = "10s"
     retries      = 10

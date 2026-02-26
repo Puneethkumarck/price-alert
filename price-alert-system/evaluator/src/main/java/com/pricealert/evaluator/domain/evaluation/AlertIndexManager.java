@@ -1,8 +1,7 @@
 package com.pricealert.evaluator.domain.evaluation;
 
-import org.springframework.stereotype.Component;
-
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.stereotype.Component;
 
 @Component
 public class AlertIndexManager {

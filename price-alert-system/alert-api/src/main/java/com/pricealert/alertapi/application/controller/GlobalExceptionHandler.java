@@ -33,7 +33,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RateLimitExceededException.class)
     public ProblemDetail handleRateLimit(RateLimitExceededException ex) {
-        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+        var problem =
+                ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
         problem.setTitle("Too Many Requests");
         problem.setProperty("code", ErrorCodes.RATE_LIMIT_EXCEEDED);
         return problem;
@@ -44,9 +45,10 @@ public class GlobalExceptionHandler {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
         problem.setTitle("Bad Request");
         problem.setProperty("code", ErrorCodes.VALIDATION_ERROR);
-        var errors = ex.getBindingResult().getFieldErrors().stream()
-                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
-                .toList();
+        var errors =
+                ex.getBindingResult().getFieldErrors().stream()
+                        .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                        .toList();
         problem.setProperty("errors", errors);
         return problem;
     }
@@ -54,7 +56,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleUnexpected(Exception ex) {
         log.error("Unexpected error", ex);
-        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
+        var problem =
+                ProblemDetail.forStatusAndDetail(
+                        HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
         problem.setTitle("Internal Server Error");
         problem.setProperty("code", ErrorCodes.INTERNAL_ERROR);
         return problem;

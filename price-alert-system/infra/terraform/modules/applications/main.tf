@@ -79,6 +79,7 @@ resource "docker_container" "alert_api" {
 
   env = [
     "JAVA_TOOL_OPTIONS=-Xms128m -Xmx256m -XX:+UseZGC -XX:+ZGenerational",
+    "SPRING_PROFILES_ACTIVE=docker",
     "SPRING_DATASOURCE_URL=${local.jdbc_url}",
     "SPRING_DATASOURCE_USERNAME=${var.db_user}",
     "SPRING_DATASOURCE_PASSWORD=${var.db_password}",
@@ -138,6 +139,7 @@ resource "docker_container" "tick_ingestor" {
 
   env = [
     "JAVA_TOOL_OPTIONS=-Xms128m -Xmx256m -XX:+UseZGC -XX:+ZGenerational",
+    "SPRING_PROFILES_ACTIVE=docker",
     "INGESTOR_SIMULATOR_URL=ws://market-feed-simulator:8085/v1/feed",
     "SPRING_KAFKA_BOOTSTRAP_SERVERS=${var.kafka_bootstrap}",
     "SPRING_DATASOURCE_URL=${local.jdbc_url}",
@@ -192,7 +194,8 @@ resource "docker_container" "evaluator" {
   image = docker_image.evaluator.image_id
 
   env = [
-    "JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m -XX:+UseZGC -XX:+ZGenerational",
+    "JAVA_TOOL_OPTIONS=-Xms256m -Xmx1024m -XX:+UseZGC -XX:+ZGenerational",
+    "SPRING_PROFILES_ACTIVE=docker",
     "SPRING_DATASOURCE_URL=${local.jdbc_url}",
     "SPRING_DATASOURCE_USERNAME=${var.db_user}",
     "SPRING_DATASOURCE_PASSWORD=${var.db_password}",
@@ -224,7 +227,8 @@ resource "docker_container" "evaluator_2" {
   image = docker_image.evaluator.image_id
 
   env = [
-    "JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m -XX:+UseZGC -XX:+ZGenerational",
+    "JAVA_TOOL_OPTIONS=-Xms256m -Xmx1024m -XX:+UseZGC -XX:+ZGenerational",
+    "SPRING_PROFILES_ACTIVE=docker",
     "SPRING_DATASOURCE_URL=${local.jdbc_url}",
     "SPRING_DATASOURCE_USERNAME=${var.db_user}",
     "SPRING_DATASOURCE_PASSWORD=${var.db_password}",
@@ -272,7 +276,8 @@ resource "docker_container" "notification_persister" {
   image = docker_image.notification_persister.image_id
 
   env = [
-    "JAVA_TOOL_OPTIONS=-Xms128m -Xmx256m -XX:+UseZGC -XX:+ZGenerational",
+    "JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m -XX:+UseZGC -XX:+ZGenerational",
+    "SPRING_PROFILES_ACTIVE=docker",
     "SPRING_DATASOURCE_URL=${local.jdbc_url}",
     "SPRING_DATASOURCE_USERNAME=${var.db_user}",
     "SPRING_DATASOURCE_PASSWORD=${var.db_password}",
@@ -281,6 +286,39 @@ resource "docker_container" "notification_persister" {
   ]
 
   # No host port — notification-persister is an internal consumer service
+
+  healthcheck {
+    test         = ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health || exit 1"]
+    interval     = "10s"
+    timeout      = "5s"
+    retries      = 10
+    start_period = "20s"
+  }
+
+  networks_advanced {
+    name = var.network_id
+  }
+
+  restart = "unless-stopped"
+
+  depends_on = [docker_container.alert_api]
+}
+
+resource "docker_container" "notification_persister_2" {
+  name  = "notification-persister-2"
+  image = docker_image.notification_persister.image_id
+
+  env = [
+    "JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m -XX:+UseZGC -XX:+ZGenerational",
+    "SPRING_PROFILES_ACTIVE=docker",
+    "SPRING_DATASOURCE_URL=${local.jdbc_url}",
+    "SPRING_DATASOURCE_USERNAME=${var.db_user}",
+    "SPRING_DATASOURCE_PASSWORD=${var.db_password}",
+    "SPRING_KAFKA_BOOTSTRAP_SERVERS=${var.kafka_bootstrap}",
+    "SPRING_FLYWAY_ENABLED=false",
+  ]
+
+  # No host port — notification-persister-2 is an internal consumer service
 
   healthcheck {
     test         = ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health || exit 1"]
