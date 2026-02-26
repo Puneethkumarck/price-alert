@@ -1,12 +1,11 @@
 package com.pricealert.evaluator.domain.evaluation;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.pricealert.common.event.Direction;
+import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.math.BigDecimal;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class AlertIndexManagerTest {
 
@@ -28,69 +27,89 @@ class AlertIndexManagerTest {
     }
 
     @Test
-    void getOrCreate_createsNewIndex() {
+    void shouldCreateNewIndexOnFirstGetOrCreate() {
+        // when
         var index = manager.getOrCreate("AAPL");
+
+        // then
         assertThat(index).isNotNull();
         assertThat(index.isEmpty()).isTrue();
     }
 
     @Test
-    void getOrCreate_returnsSameInstance() {
+    void shouldReturnSameInstanceOnSubsequentGetOrCreate() {
+        // when
         var first = manager.getOrCreate("AAPL");
         var second = manager.getOrCreate("AAPL");
+
+        // then
         assertThat(first).isSameAs(second);
     }
 
     @Test
-    void get_nonExistent_returnsNull() {
+    void shouldReturnNullForNonExistentSymbol() {
+        // when/then
         assertThat(manager.get("AAPL")).isNull();
     }
 
     @Test
-    void addAlert_createsIndexAndAdds() {
+    void shouldCreateIndexAndAddAlertOnAddAlert() {
+        // when
         manager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
 
+        // then
         assertThat(manager.totalAlerts()).isEqualTo(1);
         assertThat(manager.symbolCount()).isEqualTo(1);
     }
 
     @Test
-    void addAlert_multipleSymbols() {
+    void shouldTrackMultipleSymbolsIndependently() {
+        // when
         manager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
         manager.addAlert(alert("a2", "MSFT", new BigDecimal("300.00"), Direction.ABOVE));
 
+        // then
         assertThat(manager.totalAlerts()).isEqualTo(2);
         assertThat(manager.symbolCount()).isEqualTo(2);
     }
 
     @Test
-    void removeAlert_removesFromCorrectSymbol() {
+    void shouldRemoveAlertFromCorrectSymbol() {
+        // given
         manager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
         manager.addAlert(alert("a2", "MSFT", new BigDecimal("300.00"), Direction.ABOVE));
 
+        // when
         manager.removeAlert("a1", "AAPL");
 
+        // then
         assertThat(manager.totalAlerts()).isEqualTo(1);
         assertThat(manager.get("AAPL").isEmpty()).isTrue();
         assertThat(manager.get("MSFT").isEmpty()).isFalse();
     }
 
     @Test
-    void removeAlert_nonExistentSymbol_noOp() {
+    void shouldBeNoOpWhenRemovingFromNonExistentSymbol() {
+        // given
         manager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
 
+        // when
         manager.removeAlert("a1", "NONEXISTENT");
 
+        // then
         assertThat(manager.totalAlerts()).isEqualTo(1);
     }
 
     @Test
-    void clear_removesAllIndices() {
+    void shouldRemoveAllIndicesOnClear() {
+        // given
         manager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
         manager.addAlert(alert("a2", "MSFT", new BigDecimal("300.00"), Direction.ABOVE));
 
+        // when
         manager.clear();
 
+        // then
         assertThat(manager.totalAlerts()).isZero();
         assertThat(manager.symbolCount()).isZero();
     }

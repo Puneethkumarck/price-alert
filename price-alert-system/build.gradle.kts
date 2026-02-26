@@ -2,6 +2,7 @@ plugins {
     java
     id("org.springframework.boot") version "4.0.3" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
+    id("com.diffplug.spotless") version "8.2.1" apply false
 }
 
 allprojects {
@@ -15,6 +16,17 @@ allprojects {
 
 subprojects {
     apply(plugin = "java")
+    apply(plugin = "com.diffplug.spotless")
+
+    configure<com.diffplug.gradle.spotless.SpotlessExtension> {
+        java {
+            googleJavaFormat("1.34.1").aosp().reflowLongStrings().skipJavadocFormatting()
+            removeUnusedImports()
+            trimTrailingWhitespace()
+            endWithNewline()
+            targetExclude("**/generated/**", "**/*MapperImpl.java")
+        }
+    }
 
     java {
         toolchain {
@@ -23,10 +35,10 @@ subprojects {
     }
 
     dependencies {
-        "compileOnly"("org.projectlombok:lombok:1.18.38")
-        "annotationProcessor"("org.projectlombok:lombok:1.18.38")
-        "testCompileOnly"("org.projectlombok:lombok:1.18.38")
-        "testAnnotationProcessor"("org.projectlombok:lombok:1.18.38")
+        "compileOnly"("org.projectlombok:lombok:1.18.42")
+        "annotationProcessor"("org.projectlombok:lombok:1.18.42")
+        "testCompileOnly"("org.projectlombok:lombok:1.18.42")
+        "testAnnotationProcessor"("org.projectlombok:lombok:1.18.42")
         "testImplementation"(platform("org.testcontainers:testcontainers-bom:1.21.3"))
         "implementation"("io.micrometer:micrometer-registry-prometheus")
         "implementation"("io.micrometer:micrometer-tracing-bridge-otel")

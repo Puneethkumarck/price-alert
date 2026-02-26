@@ -1,13 +1,13 @@
 package com.pricealert.evaluator.domain.evaluation;
 
-import com.pricealert.common.event.Direction;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import com.pricealert.common.event.AlertTrigger;
+import com.pricealert.common.event.Direction;
 import java.math.BigDecimal;
 import java.time.Instant;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class EvaluationEngineTest {
 
@@ -31,93 +31,125 @@ class EvaluationEngineTest {
     }
 
     @Test
-    void evaluate_noIndex_returnsEmpty() {
+    void shouldReturnEmptyWhenNoIndexExistsForSymbol() {
+        // when
         var triggers = engine.evaluate("AAPL", new BigDecimal("150.00"), Instant.now());
+
+        // then
         assertThat(triggers).isEmpty();
     }
 
     @Test
-    void evaluate_emptyIndex_returnsEmpty() {
+    void shouldReturnEmptyWhenIndexIsEmpty() {
+        // given
         indexManager.getOrCreate("AAPL");
 
+        // when
         var triggers = engine.evaluate("AAPL", new BigDecimal("150.00"), Instant.now());
+
+        // then
         assertThat(triggers).isEmpty();
     }
 
     @Test
-    void evaluate_aboveAlert_producesCorrectTrigger() {
+    void shouldProduceCorrectTriggerForAboveAlert() {
+        // given
+        var tickTimestamp = Instant.now();
         indexManager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
 
-        var triggers = engine.evaluate("AAPL", new BigDecimal("155.00"), Instant.now());
+        // when
+        var triggers = engine.evaluate("AAPL", new BigDecimal("155.00"), tickTimestamp);
 
+        // then
         assertThat(triggers).hasSize(1);
         var trigger = triggers.getFirst();
-        assertThat(trigger.alertId()).isEqualTo("a1");
-        assertThat(trigger.userId()).isEqualTo("user1");
-        assertThat(trigger.symbol()).isEqualTo("AAPL");
-        assertThat(trigger.thresholdPrice()).isEqualByComparingTo(new BigDecimal("150.00"));
-        assertThat(trigger.triggerPrice()).isEqualByComparingTo(new BigDecimal("155.00"));
-        assertThat(trigger.direction()).isEqualTo(Direction.ABOVE);
-        assertThat(trigger.triggerId()).isNotNull();
-        assertThat(trigger.tickTimestamp()).isNotNull();
-        assertThat(trigger.triggeredAt()).isNotNull();
-        assertThat(trigger.tradingDate()).isNotNull();
+        var expectedTrigger =
+                AlertTrigger.builder()
+                        .triggerId(trigger.triggerId())
+                        .alertId("a1")
+                        .userId("user1")
+                        .symbol("AAPL")
+                        .thresholdPrice(new BigDecimal("150.00"))
+                        .triggerPrice(new BigDecimal("155.00"))
+                        .direction(Direction.ABOVE)
+                        .tickTimestamp(trigger.tickTimestamp())
+                        .triggeredAt(trigger.triggeredAt())
+                        .tradingDate(trigger.tradingDate())
+                        .build();
+        assertThat(trigger)
+                .usingRecursiveComparison()
+                .withComparatorForType(BigDecimal::compareTo, BigDecimal.class)
+                .isEqualTo(expectedTrigger);
     }
 
     @Test
-    void evaluate_differentSymbols_independent() {
+    void shouldEvaluateDifferentSymbolsIndependently() {
+        // given
         indexManager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
         indexManager.addAlert(alert("a2", "MSFT", new BigDecimal("300.00"), Direction.ABOVE));
 
+        // when
         var aaplTriggers = engine.evaluate("AAPL", new BigDecimal("155.00"), Instant.now());
         var msftTriggers = engine.evaluate("MSFT", new BigDecimal("290.00"), Instant.now());
 
+        // then
         assertThat(aaplTriggers).hasSize(1);
         assertThat(msftTriggers).isEmpty();
     }
 
     @Test
-    void evaluate_multipleAlertsSameSymbol_allFire() {
+    void shouldFireAllMatchingAlertsForSameSymbol() {
+        // given
         indexManager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
         indexManager.addAlert(alert("a2", "AAPL", new BigDecimal("155.00"), Direction.ABOVE));
 
+        // when
         var triggers = engine.evaluate("AAPL", new BigDecimal("160.00"), Instant.now());
 
+        // then
         assertThat(triggers).hasSize(2);
-        assertThat(triggers).extracting(t -> t.alertId())
-                .containsExactlyInAnyOrder("a1", "a2");
+        assertThat(triggers).extracting(t -> t.alertId()).containsExactlyInAnyOrder("a1", "a2");
     }
 
     @Test
-    void evaluate_firedAlertsNotRepeated() {
+    void shouldNotRepeatFiredAlertsOnSubsequentEvaluations() {
+        // given
         indexManager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
 
+        // when
         var first = engine.evaluate("AAPL", new BigDecimal("155.00"), Instant.now());
         var second = engine.evaluate("AAPL", new BigDecimal("160.00"), Instant.now());
 
+        // then
         assertThat(first).hasSize(1);
         assertThat(second).isEmpty();
     }
 
     @Test
-    void evaluate_setsUniqueTriggerId() {
+    void shouldAssignUniqueTriggerId() {
+        // given
         indexManager.addAlert(alert("a1", "AAPL", new BigDecimal("100.00"), Direction.ABOVE));
         indexManager.addAlert(alert("a2", "AAPL", new BigDecimal("100.00"), Direction.ABOVE));
 
+        // when
         var triggers = engine.evaluate("AAPL", new BigDecimal("150.00"), Instant.now());
 
+        // then
         assertThat(triggers).hasSize(2);
         assertThat(triggers.get(0).triggerId()).isNotEqualTo(triggers.get(1).triggerId());
     }
 
     @Test
-    void evaluate_tradingDate_derivedFromTickTimestamp() {
+    void shouldDeriveTradingDateFromTickTimestamp() {
+        // given
         indexManager.addAlert(alert("a1", "AAPL", new BigDecimal("150.00"), Direction.ABOVE));
-
         // 2026-02-23 14:30:00 UTC = 2026-02-23 09:30:00 ET
         var tickTimestamp = Instant.parse("2026-02-23T14:30:00Z");
+
+        // when
         var triggers = engine.evaluate("AAPL", new BigDecimal("155.00"), tickTimestamp);
 
+        // then
         assertThat(triggers.getFirst().tradingDate().toString()).isEqualTo("2026-02-23");
     }
 }

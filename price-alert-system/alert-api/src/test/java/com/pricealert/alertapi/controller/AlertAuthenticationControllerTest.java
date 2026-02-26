@@ -1,28 +1,29 @@
 package com.pricealert.alertapi.controller;
 
-import org.junit.jupiter.api.Test;
-
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import lombok.SneakyThrows;
+import org.junit.jupiter.api.Test;
+
 class AlertAuthenticationControllerTest extends AlertControllerBaseTest {
 
+    @SneakyThrows
     @Test
-    void shouldReturn403WhenNoTokenProvided() throws Exception {
-        mockMvc.perform(get(ALERTS_PATH))
+    void shouldReturn403WhenNoTokenProvided() {
+        mockMvc.perform(get(ALERTS_PATH)).andExpect(status().isForbidden());
+    }
+
+    @SneakyThrows
+    @Test
+    void shouldReturn403WhenInvalidTokenProvided() {
+        mockMvc.perform(get(ALERTS_PATH).header("Authorization", "Bearer invalid.token.here"))
                 .andExpect(status().isForbidden());
     }
 
+    @SneakyThrows
     @Test
-    void shouldReturn403WhenInvalidTokenProvided() throws Exception {
-        mockMvc.perform(get(ALERTS_PATH)
-                        .header("Authorization", "Bearer invalid.token.here"))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void shouldAllowActuatorWithoutToken() throws Exception {
-        mockMvc.perform(get("/actuator/health"))
-                .andExpect(status().isOk());
+    void shouldAllowActuatorWithoutToken() {
+        mockMvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 }

@@ -1,62 +1,86 @@
 package com.pricealert.evaluator.domain.evaluation;
 
-import com.pricealert.common.event.Direction;
-import org.junit.jupiter.api.Test;
-
-import java.math.BigDecimal;
-
 import static org.assertj.core.api.Assertions.assertThat;
+
+import com.pricealert.common.event.Direction;
+import java.math.BigDecimal;
+import org.junit.jupiter.api.Test;
 
 class SymbolAlertIndexCrossTest extends SymbolAlertIndexBaseTest {
 
     @Test
-    void fires_whenPriceCrossesThresholdUpward() {
+    void shouldFireWhenPriceCrossesThresholdUpward() {
+        // given
         index.addAlert(alert("c1", new BigDecimal("155.00"), Direction.CROSS));
         index.setLastPrice(new BigDecimal("150.00"));
+
+        // when
         var fired = index.evaluate(new BigDecimal("160.00"));
+
+        // then
         assertThat(fired).hasSize(1);
         assertThat(fired.getFirst().alertId()).isEqualTo("c1");
     }
 
     @Test
-    void fires_whenPriceCrossesThresholdDownward() {
+    void shouldFireWhenPriceCrossesThresholdDownward() {
+        // given
         index.addAlert(alert("c1", new BigDecimal("155.00"), Direction.CROSS));
         index.setLastPrice(new BigDecimal("160.00"));
+
+        // when/then
         assertThat(index.evaluate(new BigDecimal("150.00"))).hasSize(1);
     }
 
     @Test
-    void doesNotFire_whenPriceDoesNotCross() {
+    void shouldNotFireWhenPriceDoesNotCrossThreshold() {
+        // given
         index.addAlert(alert("c1", new BigDecimal("155.00"), Direction.CROSS));
         index.setLastPrice(new BigDecimal("150.00"));
+
+        // when/then
         assertThat(index.evaluate(new BigDecimal("153.00"))).isEmpty();
     }
 
     @Test
-    void doesNotFire_whenLastPriceIsNull() {
+    void shouldNotFireWhenLastPriceIsNull() {
+        // given
         index.addAlert(alert("c1", new BigDecimal("155.00"), Direction.CROSS));
+
+        // when/then
         assertThat(index.evaluate(new BigDecimal("160.00"))).isEmpty();
     }
 
     @Test
-    void doesNotFire_whenPriceEqualsThreshold_noCross() {
+    void shouldNotFireWhenPriceEqualsThresholdWithoutCrossing() {
+        // given
         index.addAlert(alert("c1", new BigDecimal("155.00"), Direction.CROSS));
         index.setLastPrice(new BigDecimal("150.00"));
+
+        // when/then
         assertThat(index.evaluate(new BigDecimal("155.00"))).isEmpty();
     }
 
     @Test
-    void doesNotFire_whenPriceUnchanged() {
+    void shouldNotFireWhenPriceIsUnchanged() {
+        // given
         index.addAlert(alert("c1", new BigDecimal("155.00"), Direction.CROSS));
         index.setLastPrice(new BigDecimal("150.00"));
+
+        // when/then
         assertThat(index.evaluate(new BigDecimal("150.00"))).isEmpty();
     }
 
     @Test
-    void removedFromIndexAfterFiring() {
+    void shouldBeRemovedFromIndexAfterFiring() {
+        // given
         index.addAlert(alert("c1", new BigDecimal("155.00"), Direction.CROSS));
         index.setLastPrice(new BigDecimal("150.00"));
+
+        // when
         index.evaluate(new BigDecimal("160.00"));
+
+        // then
         assertThat(index.size()).isZero();
     }
 }
