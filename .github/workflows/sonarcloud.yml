@@ -33,6 +33,13 @@ jobs:
       - name: Generate coverage report
         run: ./gradlew jacocoTestReport
 
+      # Sonar step uses Java 21 so Gradle can instrument Bouncy Castle (multi-release JAR) used by the Sonar plugin
+      - name: Set up JDK 21 for Sonar
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: SonarCloud scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
